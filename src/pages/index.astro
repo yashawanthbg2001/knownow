@@ -1,27 +1,53 @@
 ---
 import { createClient } from "@libsql/client";
 
+const url = import.meta.env.TURSO_DATABASE_URL;
+const authToken = import.meta.env.TURSO_AUTH_TOKEN;
+
 const client = createClient({
-  url: import.meta.env.TURSO_DATABASE_URL,
-  authToken: import.meta.env.TURSO_AUTH_TOKEN,
+  url: url,
+  authToken: authToken,
 });
 
-const rs = await client.execute("SELECT * FROM articles ORDER BY created_at DESC LIMIT 10");
-const articles = rs.rows;
+let articles = [];
+let debugError = null;
+
+try {
+  const rs = await client.execute("SELECT * FROM articles ORDER BY id DESC LIMIT 20");
+  articles = rs.rows;
+} catch (e) {
+  debugError = e.message;
+}
 ---
 
-<html lang="kn">
+<html lang="en">
 <head>
-    <title>My AI News Portal</title>
+    <meta charset="UTF-8">
+    <title>KnowNow Tech</title>
 </head>
 <body>
     <h1>Latest Trending Articles</h1>
-    {articles.map((post) => (
-        <article style="border-bottom: 1px solid #ccc; margin-bottom: 20px;">
-            <h2>{post.title}</h2>
-            <div set:html={post.content}></div>
-            <p><small>Source: <a href={post.source_url as string}>{post.source_url}</a></small></p>
-        </article>
-    ))}
+    
+    <div class="content">
+        {articles.length > 0 ? (
+            articles.map((post) => (
+                <article style="border-bottom: 1px solid #ccc; padding: 1rem 0;">
+                    <h2>{post.title}</h2>
+                    <div set:html={post.content}></div>
+                </article>
+            ))
+        ) : (
+            <p style="color: red;">⚠️ No articles found in database during build.</p>
+        )}
+    </div>
+
+    <hr />
+    <section style="background: #eee; padding: 1rem; font-family: monospace; font-size: 12px;">
+        <h3>Build Debugger</h3>
+        <p>DB URL Configured: {url ? "✅ Yes" : "❌ Missing"}</p>
+        <p>Auth Token Configured: {authToken ? "✅ Yes" : "❌ Missing"}</p>
+        <p>Articles Count: {articles.length}</p>
+        {debugError && <p style="color: red;">Error: {debugError}</p>}
+    </section>
 </body>
 </html>
