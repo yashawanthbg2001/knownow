@@ -1,3 +1,5 @@
+requests
 wikipedia
 libsql-client
 groq
+aiohttp
