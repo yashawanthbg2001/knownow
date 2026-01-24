@@ -1,17 +1,27 @@
 ---
+import { createClient } from "@libsql/client";
 
+const client = createClient({
+  url: import.meta.env.TURSO_DATABASE_URL,
+  authToken: import.meta.env.TURSO_AUTH_TOKEN,
+});
+
+const rs = await client.execute("SELECT * FROM articles ORDER BY created_at DESC LIMIT 10");
+const articles = rs.rows;
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
+<html lang="kn">
+<head>
+    <title>My AI News Portal</title>
+</head>
+<body>
+    <h1>Latest Trending Articles</h1>
+    {articles.map((post) => (
+        <article style="border-bottom: 1px solid #ccc; margin-bottom: 20px;">
+            <h2>{post.title}</h2>
+            <div set:html={post.content}></div>
+            <p><small>Source: <a href={post.source_url as string}>{post.source_url}</a></small></p>
+        </article>
+    ))}
+</body>
 </html>
