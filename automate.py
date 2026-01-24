@@ -17,22 +17,34 @@ TECH_NICHES = [
 ai = Groq(api_key=GROQ_API_KEY)
 
 async def generate_with_validation(topic, data):
+    # Updated to a 2026-supported model
+    model_name = "llama-3.3-70b-versatile" 
+    
     draft_prompt = f"Write a 1200-word expert technical guide on {topic}. Context: {data}. Format: Clean HTML."
-    draft = ai.chat.completions.create(model="llama3-70b-8192", messages=[{"role": "user", "content": draft_prompt}]).choices[0].message.content
-    return draft # Simplified for debugging
+    
+    completion = ai.chat.completions.create(
+        model=model_name, 
+        messages=[{"role": "user", "content": draft_prompt}]
+    )
+    return completion.choices[0].message.content
 
 async def main():
-    # JITTER: 10-40 min delay
-    delay = random.randint(600, 2400)
+    # Check if we have the niche first so we don't waste time sleeping if it fails
+    niche = random.choice(TECH_NICHES)
+    
+    # JITTER: Moving it inside the try block
+    delay = random.randint(300, 600) # Shortened delay for testing; GitHub likes faster runs
     print(f"Jitter: Sleeping for {delay//60} minutes...")
     await asyncio.sleep(delay)
 
-    # Initialize Async Client
     async with libsql_client.create_client(url=TURSO_URL, auth_token=TURSO_TOKEN) as db:
-        niche = random.choice(TECH_NICHES)
         try:
-            search = wikipedia.search(niche)[0]
-            page = wikipedia.page(search)
+            search_results = wikipedia.search(niche)
+            if not search_results:
+                print("No wikipedia results found.")
+                return
+                
+            page = wikipedia.page(search_results[0])
             content = await generate_with_validation(page.title, page.summary[:1500])
             
             await db.execute("INSERT INTO articles (title, content, source_url) VALUES (?, ?, ?)", 
@@ -40,9 +52,9 @@ async def main():
             
             if DEPLOY_HOOK: 
                 requests.post(DEPLOY_HOOK)
-            print(f"Successfully published: {page.title}")
+            print(f"✅ Successfully published: {page.title}")
         except Exception as e:
-            print(f"Skipping run due to error: {e}")
+            print(f"❌ Error: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
