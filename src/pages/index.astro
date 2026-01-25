@@ -5,31 +5,37 @@ const client = createClient({
   authToken: import.meta.env.TURSO_AUTH_TOKEN,
 });
 
-const rs = await client.execute("SELECT id, title, slug, image_url FROM articles ORDER BY id DESC LIMIT 12");
+const rs = await client.execute("SELECT title, slug, image_url FROM articles ORDER BY id DESC LIMIT 12");
 const articles = rs.rows;
 ---
 
 <style>
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 2rem; padding: 2rem; }
-  .card { border: 1px solid #eee; border-radius: 8px; overflow: hidden; transition: transform 0.2s; }
-  .card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+  body { font-family: 'Inter', sans-serif; background: #fafafa; margin: 0; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 2rem; }
+  .card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: 0.3s; text-decoration: none; color: inherit; }
+  .card:hover { transform: translateY(-5px); box-shadow: 0 12px 20px rgba(0,0,0,0.1); }
   .card img { width: 100%; height: 200px; object-fit: cover; }
-  .card-content { padding: 1.5rem; }
-  .card h2 { font-size: 1.25rem; margin-top: 0; }
-  .btn { display: inline-block; background: #0070f3; color: white; padding: 0.5rem 1rem; border-radius: 4px; text-decoration: none; }
+  .card-body { padding: 1.5rem; }
+  .card h2 { margin: 0 0 1rem; font-size: 1.2rem; line-height: 1.4; }
+  .tag { background: #0070f3; color: white; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
 </style>
 
-<main>
-  <h1 style="text-align: center; margin-top: 2rem;">KnowNow Tech Pulse</h1>
+<div class="container">
+  <header style="margin-bottom: 3rem; text-align: center;">
+    <span class="tag">Live Updates</span>
+    <h1>KnowNow Technical Pulse</h1>
+  </header>
+
   <div class="grid">
     {articles.map((post) => (
-      <div class="card">
-        <img src={post.image_url || 'https://via.placeholder.com/400x200?text=Tech'} alt={post.title} />
-        <div class="card-content">
+      <a href={`/article/${post.slug}`} class="card">
+        <img src={post.image_url as string} alt={post.title as string} loading="lazy" />
+        <div class="card-body">
           <h2>{post.title}</h2>
-          <a href={`/article/${post.slug}`} class="btn">Read More</a>
+          <span style="color: #0070f3; font-weight: 500;">Read Technical Analysis →</span>
         </div>
-      </div>
+      </a>
     ))}
   </div>
-</main>
+</div>

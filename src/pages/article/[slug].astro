@@ -22,10 +22,9 @@ const rs = await client.execute({
 const post = rs.rows[0];
 ---
 
-<article style="max-width: 800px; margin: auto; padding: 2rem; font-family: sans-serif;">
-  <img src={post.image_url} style="width: 100%; border-radius: 12px;" />
-  <h1 style="font-size: 3rem;">{post.title}</h1>
+<article style="max-width: 750px; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.8; font-family: 'Inter', sans-serif;">
+  <a href="/" style="text-decoration: none; color: #666;">← Back to Pulse</a>
+  <img src={post.image_url as string} style="width: 100%; border-radius: 16px; margin: 2rem 0;" />
+  <h1 style="font-size: 2.5rem; line-height: 1.2; margin-bottom: 2rem;">{post.title}</h1>
   <div set:html={post.content} class="prose" />
-  <hr />
-  <p>Source: <a href={post.source_url as string}>Wikipedia</a></p>
 </article>

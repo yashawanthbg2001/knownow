@@ -69,6 +69,7 @@ async def main():
     async with libsql_client.create_client(url=TURSO_URL, auth_token=TURSO_TOKEN) as db:
         try:
             # 2. Search Wikipedia for stable factual data
+       
             search_results = wikipedia.search(niche)
             if not search_results:
                 print("No results found.")
@@ -77,27 +78,23 @@ async def main():
             page = wikipedia.page(search_results[0])
             slug = create_slug(page.title)
             
-            # 3. Generate Accurate AI Image URL
-            # Using Pollinations.ai for dynamic, high-accuracy tech imagery
             img_topic = page.title.replace(" ", "%20")
-            image_url = f"https://image.pollinations.ai/prompt/professional_tech_photography_of_{img_topic}_high_resolution_8k?width=1280&height=720&nologo=true&seed={random.randint(1,1000)}"
+            image_url = f"https://image.pollinations.ai/prompt/professional_tech_photography_of_{img_topic}_high_resolution_8k?width=1280&height=720&nologo=true"
 
-            # 4. Generate the Article Content
             content = await generate_with_validation(page.title, page.summary[:1500])
             
             if content:
-                # 5. Save to Turso Database
+                # Optimized SQL execution to avoid 'result' key errors
                 await db.execute(
                     "INSERT INTO articles (title, content, source_url, slug, image_url) VALUES (?, ?, ?, ?, ?)", 
-                    (page.title, content, page.url, slug, image_url)
+                    [page.title, content, page.url, slug, image_url]
                 )
                 
-                # 6. Trigger Cloudflare to rebuild the static site
                 if DEPLOY_HOOK: 
                     requests.post(DEPLOY_HOOK)
                     print(f"🚀 Published & Rebuild Triggered: {page.title}")
                 else:
-                    print(f"✅ Saved to DB (No Deploy Hook found): {page.title}")
+                    print(f"✅ Saved to DB: {page.title}")
                     
         except Exception as e:
             print(f"❌ Workflow Error: {e}")
