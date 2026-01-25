@@ -1,22 +1,7 @@
-import { defineConfig } from "astro/config";
-import cloudflare from "@astrojs/cloudflare";
+import { defineConfig } from 'astro/config';
 
 export default defineConfig({
-  output: "server",
-  adapter: cloudflare(),
-
-  env: {
-    schema: {
-      TURSO_DATABASE_URL: {
-        type: "string",
-        context: "server",
-        access: "secret",
-      },
-      TURSO_AUTH_TOKEN: {
-        type: "string",
-        context: "server",
-        access: "secret",
-      },
-    },
-  },
+  site: 'https://yashawanthbg2001.github.io',
+  base: '/knownow', // Only if your repo is named 'knownow'
+  output: 'static',
 });

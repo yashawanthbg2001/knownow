@@ -12,9 +12,10 @@ from groq import Groq
 TURSO_URL = os.getenv("TURSO_DATABASE_URL")
 TURSO_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-DEPLOY_HOOK = os.getenv("CLOUDFLARE_DEPLOY_HOOK")
+GH_TOKEN = os.getenv("GH_TOKEN") # GitHub Personal Access Token
+REPO_OWNER = "yashawanthbg2001"
+REPO_NAME = "knownow"
 
-# BROAD TECH NICHES (Updated for 2026 Trends)
 TECH_NICHES = [
     "Quantum Computing Breakthroughs", "Consumer Drone Regulations 2026", 
     "Open Source LLMs", "NVIDIA RTX 50-Series Rumors", "Apple Reality Pro Apps",
@@ -27,26 +28,13 @@ TECH_NICHES = [
 ai = Groq(api_key=GROQ_API_KEY)
 
 def create_slug(text):
-    """Converts 'Hello World' to 'hello-world' for SEO URLs"""
     text = text.lower()
     text = re.sub(r'[^a-z0-9]+', '-', text)
     return text.strip('-')
 
 async def generate_with_validation(topic, data):
-    """Uses Llama 3.3 70B to generate professional technical content"""
     model_name = "llama-3.3-70b-versatile" 
-    
-    prompt = f"""
-    Write a 1200-word expert technical guide on '{topic}'. 
-    Use this factual data as a base: {data}
-    
-    Requirements:
-    - Language: English
-    - Style: Professional Tech Journalist (like Wired or The Verge)
-    - Format: Clean HTML using <h2>, <h3>, <p>, <ul>, and <li> tags.
-    - SEO: Include a 1-sentence TL;DR at the start.
-    - Accuracy: Ensure technical terms are used correctly.
-    """
+    prompt = f"Write a 1200-word expert technical guide on '{topic}'. Base it on: {data}. Format: Clean HTML using <h2>, <h3>, <p>, <ul>, <li>. Include a TL;DR."
     
     try:
         completion = ai.chat.completions.create(
@@ -60,44 +48,35 @@ async def generate_with_validation(topic, data):
         return None
 
 async def main():
-    # 1. Randomize Niche and Delay (Bot Detection Protection)
     niche = random.choice(TECH_NICHES)
-    delay = random.randint(600, 2400) # 10 to 40 minutes jitter
-    print(f"Jitter: Sleeping for {delay//60} minutes before targeting: {niche}")
-    await asyncio.sleep(delay)
-
+    # Jitter removed for testing; add back await asyncio.sleep(random.randint(600, 2400)) for production
+    
     async with libsql_client.create_client(url=TURSO_URL, auth_token=TURSO_TOKEN) as db:
         try:
-            # 2. Search Wikipedia for stable factual data
-       
             search_results = wikipedia.search(niche)
-            if not search_results:
-                print("No results found.")
-                return
+            if not search_results: return
                 
             page = wikipedia.page(search_results[0])
             slug = f"{create_slug(page.title)}-{int(time.time())}"
-
-            
-            img_topic = page.title.replace(" ", "%20")
-      # Added random seed for unique generation per run
-            seed = random.randint(0, 999999)
-            image_url = f"https://image.pollinations.ai/prompt/professional_tech_photography_of_{img_topic}_high_resolution_8k?width=1280&height=720&nologo=true&seed={seed}"
+            image_url = f"https://image.pollinations.ai/prompt/tech_photo_{page.title.replace(' ', '_')}?width=1280&height=720&seed={random.randint(0,999)}"
 
             content = await generate_with_validation(page.title, page.summary[:1500])
             
             if content:
-                # Optimized SQL execution to avoid 'result' key errors
                 await db.execute(
                     "INSERT INTO articles (title, content, source_url, slug, image_url) VALUES (?, ?, ?, ?, ?)", 
                     [page.title, content, page.url, slug, image_url]
                 )
                 
-                if DEPLOY_HOOK: 
-                    requests.post(DEPLOY_HOOK)
-                    print(f"🚀 Published & Rebuild Triggered: {page.title}")
+                # TRIGGER GITHUB DEPLOYMENT
+                dispatch_url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/dispatches"
+                headers = {"Authorization": f"token {GH_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+                res = requests.post(dispatch_url, headers=headers, json={"event_type": "automation-trigger"})
+                
+                if res.status_code == 204:
+                    print(f"🚀 Success: {page.title} published and GitHub Build triggered.")
                 else:
-                    print(f"✅ Saved to DB: {page.title}")
+                    print(f"⚠️ Saved to DB, but GitHub trigger failed: {res.status_code}")
                     
         except Exception as e:
             print(f"❌ Workflow Error: {e}")
