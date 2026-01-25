@@ -79,7 +79,9 @@ async def main():
             slug = create_slug(page.title)
             
             img_topic = page.title.replace(" ", "%20")
-            image_url = f"https://image.pollinations.ai/prompt/professional_tech_photography_of_{img_topic}_high_resolution_8k?width=1280&height=720&nologo=true"
+      # Added random seed for unique generation per run
+            seed = random.randint(0, 999999)
+            image_url = f"https://image.pollinations.ai/prompt/professional_tech_photography_of_{img_topic}_high_resolution_8k?width=1280&height=720&nologo=true&seed={seed}"
 
             content = await generate_with_validation(page.title, page.summary[:1500])
             
