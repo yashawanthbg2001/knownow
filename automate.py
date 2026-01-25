@@ -76,7 +76,8 @@ async def main():
                 return
                 
             page = wikipedia.page(search_results[0])
-            slug = create_slug(page.title)
+            slug = f"{create_slug(page.title)}-{int(time.time())}"
+
             
             img_topic = page.title.replace(" ", "%20")
       # Added random seed for unique generation per run
