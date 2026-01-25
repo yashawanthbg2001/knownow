@@ -2,10 +2,13 @@
 import { createClient } from "@libsql/client";
 
 export async function getStaticPaths() {
-  const client = createClient({
-    url: import.meta.env.TURSO_DATABASE_URL,
-    authToken: import.meta.env.TURSO_AUTH_TOKEN,
-  });
+ const url = import.meta.env.TURSO_DATABASE_URL || process.env.TURSO_DATABASE_URL;
+const authToken = import.meta.env.TURSO_AUTH_TOKEN || process.env.TURSO_AUTH_TOKEN;
+
+const client = createClient({
+  url: url,
+  authToken: authToken,
+});
 
   try {
     const rs = await client.execute("SELECT slug FROM articles WHERE slug IS NOT NULL");
