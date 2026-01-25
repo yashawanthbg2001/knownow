@@ -1,27 +1,20 @@
 ---
 import { createClient } from "@libsql/client";
 
-// Hardcoding for testing
-const DB_URL = "libsql://content-gen-yashawanth.aws-ap-south-1.turso.io";
-const DB_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjkyNzI3MzAsImlkIjoiZmIwZWU4ZWItZmZhOS00Y2RmLTk3NDctNWI4ODViY2ZlNjlkIiwicmlkIjoiNzhlZWQ2YWYtODNkMC00OWU0LTg3MjEtMjBhNTQ1YTk4ZDQ3In0.IiHkGPV3aKuPkc_q-1efWQdnH2YM4QKtT2_MzyNZgQEmYMs84MneQZ-RM912mF8DZdH3Fpk2LSvfoUr6HvG5AA";
-
 export async function getStaticPaths() {
-  // HARDCODE HERE FOR TESTING
   const DB_URL = "libsql://content-gen-yashawanth.aws-ap-south-1.turso.io";
-  const DB_TOKEN = "your_actual_token_here";
+  const DB_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjkyNzI3MzAsImlkIjoiZmIwZWU4ZWItZmZhOS00Y2RmLTk3NDctNWI4ODViY2ZlNjlkIiwicmlkIjoiNzhlZWQ2YWYtODNkMC00OWU0LTg3MjEtMjBhNTQ1YTk4ZDQ3In0.IiHkGPV3aKuPkc_q-1efWQdnH2YM4QKtT2_MzyNZgQEmYMs84MneQZ-RM912mF8DZdH3Fpk2LSvfoUr6HvG5AA";
 
   const client = createClient({ url: DB_URL, authToken: DB_TOKEN });
-  
+
   try {
     const rs = await client.execute("SELECT slug FROM articles WHERE slug IS NOT NULL AND slug != ''");
     
-    if (rs.rows.length === 0) {
-      console.log("⚠️ No articles found in database!");
-      return [];
-    }
+    // Check if we actually got data
+    if (!rs.rows.length) return [];
 
     return rs.rows.map((row) => ({
-      params: { slug: row.slug.toString() },
+      params: { slug: String(row.slug) },
     }));
   } catch (e) {
     console.error("❌ getStaticPaths failed:", e);
@@ -30,12 +23,15 @@ export async function getStaticPaths() {
 }
 
 const { slug } = Astro.params;
+const DB_URL = "libsql://content-gen-yashawanth.aws-ap-south-1.turso.io";
+const DB_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjkyNzI3MzAsImlkIjoiZmIwZWU4ZWItZmZhOS00Y2RmLTk3NDctNWI4ODViY2ZlNjlkIiwicmlkIjoiNzhlZWQ2YWYtODNkMC00OWU0LTg3MjEtMjBhNTQ1YTk4ZDQ3In0.IiHkGPV3aKuPkc_q-1efWQdnH2YM4QKtT2_MzyNZgQEmYMs84MneQZ-RM912mF8DZdH3Fpk2LSvfoUr6HvG5AA";
+
 const client = createClient({ url: DB_URL, authToken: DB_TOKEN });
 const rs = await client.execute({
   sql: "SELECT * FROM articles WHERE slug = ?",
-  args: [slug]
+  args: [String(slug)]
 });
-const post = rs.rows[0];
+const post = rs.rows[0] || { title: "Not Found", content: "Article not found." };
 ---
 
 
