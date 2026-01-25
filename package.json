@@ -12,5 +12,10 @@
     "@astrojs/cloudflare": "^12.6.12",
     "@libsql/client": "^0.17.0",
     "astro": "^5.16.15"
+  },
+  "engines": {
+    "node": ">=18.20.8"
   }
+
+
 }
