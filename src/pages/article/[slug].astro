@@ -6,8 +6,16 @@ export async function getStaticPaths() {
     url: import.meta.env.TURSO_DATABASE_URL,
     authToken: import.meta.env.TURSO_AUTH_TOKEN,
   });
-  const rs = await client.execute("SELECT slug FROM articles");
-  return rs.rows.map((row) => ({ params: { slug: row.slug } }));
+
+  try {
+    const rs = await client.execute("SELECT slug FROM articles WHERE slug IS NOT NULL");
+    return rs.rows.map((row) => ({
+      params: { slug: row.slug },
+    }));
+  } catch (e) {
+    console.error("Build error fetching slugs:", e);
+    return []; // Return empty array so build doesn't crash
+  }
 }
 
 const { slug } = Astro.params;
