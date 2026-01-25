@@ -19,10 +19,11 @@ jobs:
         with:
           node-version: 20
       - run: npm install
-      - name: Build with Turso Data
+      - name: Build Static Site
+        # This is the part that connects GitHub Secrets to your Astro Code
         env:
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          PUBLIC_TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          PUBLIC_TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

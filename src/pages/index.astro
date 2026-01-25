@@ -1,22 +1,19 @@
 ---
 import { createClient } from "@libsql/client";
 
-// Safe variable fetch
-const url = import.meta.env.PUBLIC_TURSO_DATABASE_URL?.trim() ?? "";
-const authToken = import.meta.env.PUBLIC_TURSO_AUTH_TOKEN?.trim() ?? "";
+// Use non-public names for better security
+const url = import.meta.env.TURSO_DATABASE_URL || process.env.TURSO_DATABASE_URL;
+const authToken = import.meta.env.TURSO_AUTH_TOKEN || process.env.TURSO_AUTH_TOKEN;
 
-
-let articles = [];
-
-if (url && url !== "") {
-    try {
-        const client = createClient({ url, authToken });
-        const rs = await client.execute("SELECT title, slug, image_url FROM articles ORDER BY id DESC LIMIT 12");
-        articles = rs.rows;
-    } catch (e) {
-        console.error("Fetch failed:", e);
-    }
+if (!url) {
+  // This will now only show up in your GitHub Action logs if the env block above is missing
+  console.error("❌ TURSO DATABASE URL MISSING AT BUILD TIME");
 }
+
+const client = createClient({
+  url: url || "",
+  authToken: authToken || "",
+});
 ---
 
 <style>
