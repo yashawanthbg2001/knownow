@@ -1,17 +1,19 @@
+---
 import { createClient } from "@libsql/client";
 
+// Safe variable fetch
 const url = (import.meta.env.TURSO_DATABASE_URL || process.env.TURSO_DATABASE_URL || "").trim();
 const authToken = (import.meta.env.TURSO_AUTH_TOKEN || process.env.TURSO_AUTH_TOKEN || "").trim();
 
 let articles = [];
 
 if (url && url !== "") {
-    const client = createClient({ url, authToken });
     try {
+        const client = createClient({ url, authToken });
         const rs = await client.execute("SELECT title, slug, image_url FROM articles ORDER BY id DESC LIMIT 12");
         articles = rs.rows;
     } catch (e) {
-        console.error("Home page fetch failed:", e);
+        console.error("Fetch failed:", e);
     }
 }
 ---
