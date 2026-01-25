@@ -35,15 +35,16 @@ try {
     <h1>KnowNow Technical Pulse</h1>
   </header>
 
-  <div class="grid">
-    {articles.map((post) => (
-     <a href={`/knownow/article/${post.slug}`} class="card">
-        <img src={post.image_url as string} alt={post.title as string} loading="lazy" />
-        <div class="card-body">
-          <h2>{post.title}</h2>
-          <span style="color: #0070f3; font-weight: 500;">Read Technical Analysis →</span>
-        </div>
-      </a>
-    ))}
-  </div>
+<div class="grid">
+  {articles.map((post) => (
+    /* We add /knownow/ to the start because that is your GitHub subfolder */
+    <a href={`/knownow/article/${post.slug}`} class="card">
+      <img src={post.image_url} alt={post.title} loading="lazy" />
+      <div class="card-body">
+        <h2>{post.title}</h2>
+        <span style="color: #0070f3; font-weight: 500;">Read Technical Analysis →</span>
+      </div>
+    </a>
+  ))}
+</div>
 </div>
