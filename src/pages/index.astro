@@ -37,7 +37,7 @@ try {
 
   <div class="grid">
     {articles.map((post) => (
-      <a href={`/article/${post.slug}`} class="card">
+     <a href={`/knownow/article/${post.slug}`} class="card">
         <img src={post.image_url as string} alt={post.title as string} loading="lazy" />
         <div class="card-body">
           <h2>{post.title}</h2>
