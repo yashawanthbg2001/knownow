@@ -6,18 +6,16 @@ export async function getStaticPaths() {
   const DB_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjkyNzI3MzAsImlkIjoiZmIwZWU4ZWItZmZhOS00Y2RmLTk3NDctNWI4ODViY2ZlNjlkIiwicmlkIjoiNzhlZWQ2YWYtODNkMC00OWU0LTg3MjEtMjBhNTQ1YTk4ZDQ3In0.IiHkGPV3aKuPkc_q-1efWQdnH2YM4QKtT2_MzyNZgQEmYMs84MneQZ-RM912mF8DZdH3Fpk2LSvfoUr6HvG5AA";
 
   const client = createClient({ url: DB_URL, authToken: DB_TOKEN });
-
+  
   try {
-    const rs = await client.execute("SELECT slug FROM articles WHERE slug IS NOT NULL AND slug != ''");
+    const rs = await client.execute("SELECT slug FROM articles");
+    console.log(`Found ${rs.rows.length} articles to build.`); // This shows up in GitHub logs
     
-    // Check if we actually got data
-    if (!rs.rows.length) return [];
-
     return rs.rows.map((row) => ({
       params: { slug: String(row.slug) },
     }));
   } catch (e) {
-    console.error("❌ getStaticPaths failed:", e);
+    console.error("Fetch error:", e);
     return [];
   }
 }
@@ -29,9 +27,9 @@ const DB_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3N
 const client = createClient({ url: DB_URL, authToken: DB_TOKEN });
 const rs = await client.execute({
   sql: "SELECT * FROM articles WHERE slug = ?",
-  args: [String(slug)]
+  args: [slug]
 });
-const post = rs.rows[0] || { title: "Not Found", content: "Article not found." };
+const post = rs.rows[0];
 ---
 
 
