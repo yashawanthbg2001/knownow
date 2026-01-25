@@ -1,10 +1,10 @@
 ---
 import { createClient } from "@libsql/client";
 
-const DB_URL = import.meta.env.PUBLIC_TURSO_DATABASE_URL?.trim() ?? "";
-const DB_TOKEN = import.meta.env.PUBLIC_TURSO_AUTH_TOKEN?.trim() ?? "";
-
 export async function getStaticPaths() {
+  const DB_URL = import.meta.env.PUBLIC_TURSO_DATABASE_URL?.trim() ?? "";
+  const DB_TOKEN = import.meta.env.PUBLIC_TURSO_AUTH_TOKEN?.trim() ?? "";
+
   if (!DB_URL) {
     console.error("❌ TURSO DATABASE URL MISSING AT BUILD TIME");
     return [];
@@ -28,6 +28,10 @@ export async function getStaticPaths() {
     return [];
   }
 }
+
+// ⬇️ normal page code (runs AFTER paths are known)
+const DB_URL = import.meta.env.PUBLIC_TURSO_DATABASE_URL?.trim() ?? "";
+const DB_TOKEN = import.meta.env.PUBLIC_TURSO_AUTH_TOKEN?.trim() ?? "";
 
 const { slug } = Astro.params;
 
