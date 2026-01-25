@@ -1,44 +1,57 @@
 ---
 import { createClient } from "@libsql/client";
 
-// CLOUDFLARE BUILD FIX: 
-// We must ensure these are strings and provide a fallback to prevent 'undefined' crash
-const url = (import.meta.env.TURSO_DATABASE_URL || process.env.TURSO_DATABASE_URL || "").trim();
-const authToken = (import.meta.env.TURSO_AUTH_TOKEN || process.env.TURSO_AUTH_TOKEN || "").trim();
+const DB_URL = import.meta.env.PUBLIC_TURSO_DATABASE_URL?.trim() ?? "";
+const DB_TOKEN = import.meta.env.PUBLIC_TURSO_AUTH_TOKEN?.trim() ?? "";
 
 export async function getStaticPaths() {
-  const url = (import.meta.env.TURSO_DATABASE_URL || process.env.TURSO_DATABASE_URL || "").trim();
-  const authToken = (import.meta.env.TURSO_AUTH_TOKEN || process.env.TURSO_AUTH_TOKEN || "").trim();
-
-  // If both are missing, return empty to prevent the 'URL_INVALID' crash
-  if (!url) {
-    console.error("❌ CRITICAL: TURSO_DATABASE_URL is missing in build environment!");
+  if (!DB_URL) {
+    console.error("❌ TURSO DATABASE URL MISSING AT BUILD TIME");
     return [];
   }
 
-  const buildClient = createClient({ url, authToken });
+  const client = createClient({
+    url: DB_URL,
+    authToken: DB_TOKEN,
+  });
 
   try {
-    const rs = await buildClient.execute("SELECT slug FROM articles WHERE slug IS NOT NULL");
-    return rs.rows.map((row) => ({ params: { slug: row.slug } }));
+    const rs = await client.execute(
+      "SELECT slug FROM articles WHERE slug IS NOT NULL"
+    );
+
+    return rs.rows.map((row) => ({
+      params: { slug: row.slug },
+    }));
   } catch (e) {
-    console.error("Database fetch failed:", e);
+    console.error("❌ Database fetch failed:", e);
     return [];
   }
 }
 
 const { slug } = Astro.params;
-let post = { title: "Loading...", content: "", image_url: "" };
 
-if (url && slug) {
-    const client = createClient({ url, authToken });
-    const rs = await client.execute({
-        sql: "SELECT * FROM articles WHERE slug = ?",
-        args: [slug]
-    });
-    post = rs.rows[0] || post;
+let post = {
+  title: "Not found",
+  content: "",
+  image_url: "",
+};
+
+if (DB_URL && slug) {
+  const client = createClient({
+    url: DB_URL,
+    authToken: DB_TOKEN,
+  });
+
+  const rs = await client.execute({
+    sql: "SELECT * FROM articles WHERE slug = ?",
+    args: [slug],
+  });
+
+  post = rs.rows[0] ?? post;
 }
 ---
+
 
 <article style="max-width: 750px; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.8; font-family: 'Inter', sans-serif;">
   <a href="/" style="text-decoration: none; color: #666;">← Back to Pulse</a>

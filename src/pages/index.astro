@@ -2,8 +2,9 @@
 import { createClient } from "@libsql/client";
 
 // Safe variable fetch
-const url = (import.meta.env.TURSO_DATABASE_URL || process.env.TURSO_DATABASE_URL || "").trim();
-const authToken = (import.meta.env.TURSO_AUTH_TOKEN || process.env.TURSO_AUTH_TOKEN || "").trim();
+const url = import.meta.env.PUBLIC_TURSO_DATABASE_URL?.trim() ?? "";
+const authToken = import.meta.env.PUBLIC_TURSO_AUTH_TOKEN?.trim() ?? "";
+
 
 let articles = [];
 
