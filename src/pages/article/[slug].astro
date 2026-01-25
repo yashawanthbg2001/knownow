@@ -1,31 +1,26 @@
 ---
 import { createClient } from "@libsql/client";
 
-export async function getStaticPaths() {
- const url = import.meta.env.TURSO_DATABASE_URL || process.env.TURSO_DATABASE_URL;
+// Safe variable declaration for the whole file
+const url = import.meta.env.TURSO_DATABASE_URL || process.env.TURSO_DATABASE_URL;
 const authToken = import.meta.env.TURSO_AUTH_TOKEN || process.env.TURSO_AUTH_TOKEN;
 
-const client = createClient({
-  url: url,
-  authToken: authToken,
-});
+const client = createClient({ url, authToken });
+
+export async function getStaticPaths() {
+  const url = import.meta.env.TURSO_DATABASE_URL || process.env.TURSO_DATABASE_URL;
+  const authToken = import.meta.env.TURSO_AUTH_TOKEN || process.env.TURSO_AUTH_TOKEN;
+  const buildClient = createClient({ url, authToken });
 
   try {
-    const rs = await client.execute("SELECT slug FROM articles WHERE slug IS NOT NULL");
-    return rs.rows.map((row) => ({
-      params: { slug: row.slug },
-    }));
+    const rs = await buildClient.execute("SELECT slug FROM articles WHERE slug IS NOT NULL");
+    return rs.rows.map((row) => ({ params: { slug: row.slug } }));
   } catch (e) {
-    console.error("Build error fetching slugs:", e);
-    return []; // Return empty array so build doesn't crash
+    return [];
   }
 }
 
 const { slug } = Astro.params;
-const client = createClient({
-  url: import.meta.env.TURSO_DATABASE_URL,
-  authToken: import.meta.env.TURSO_AUTH_TOKEN,
-});
 const rs = await client.execute({
   sql: "SELECT * FROM articles WHERE slug = ?",
   args: [slug]
