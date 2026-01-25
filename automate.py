@@ -65,18 +65,25 @@ async def generate_with_validation(topic, data):
 
 async def main():
     # 1. Randomize Niche
-    niche = random.choice(TECH_NICHES)
+    niche = "SpaceX Starship"
     print(f"Targeting niche: {niche}")
 
     async with libsql_client.create_client(url=TURSO_URL, auth_token=TURSO_TOKEN) as db:
         try:
-            # 2. Search Wikipedia for facts
             search_results = wikipedia.search(niche)
             if not search_results:
                 print("No Wikipedia results found.")
                 return
                 
-            page = wikipedia.page(search_results[0])
+            # Use the first result, but wrap it in a try-except for Wikipedia errors
+            try:
+                page = wikipedia.page(search_results[0], auto_suggest=False)
+            except wikipedia.DisambiguationError as e:
+                # If Wikipedia is confused, just pick the first suggestion
+                page = wikipedia.page(e.options[0], auto_suggest=False)
+            except wikipedia.PageError:
+                print(f"Skipping: Page not found for {search_results[0]}")
+                return
             
             # 3. Generate UNIQUE slug (Fixes the 'null' issue)
             slug = create_slug(page.title)
