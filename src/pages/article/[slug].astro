@@ -1,59 +1,29 @@
 ---
 import { createClient } from "@libsql/client";
 
+// Hardcoding for testing
+const DB_URL = "libsql://content-gen-yashawanth.aws-ap-south-1.turso.io";
+const DB_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjkyNzI3MzAsImlkIjoiZmIwZWU4ZWItZmZhOS00Y2RmLTk3NDctNWI4ODViY2ZlNjlkIiwicmlkIjoiNzhlZWQ2YWYtODNkMC00OWU0LTg3MjEtMjBhNTQ1YTk4ZDQ3In0.IiHkGPV3aKuPkc_q-1efWQdnH2YM4QKtT2_MzyNZgQEmYMs84MneQZ-RM912mF8DZdH3Fpk2LSvfoUr6HvG5AA";
+
 export async function getStaticPaths() {
-  const DB_URL = import.meta.env.PUBLIC_TURSO_DATABASE_URL?.trim() ?? "";
-  const DB_TOKEN = import.meta.env.PUBLIC_TURSO_AUTH_TOKEN?.trim() ?? "";
+  const DB_URL = "libsql://content-gen-yashawanth.aws-ap-south-1.turso.io";
+  const DB_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjkyNzI3MzAsImlkIjoiZmIwZWU4ZWItZmZhOS00Y2RmLTk3NDctNWI4ODViY2ZlNjlkIiwicmlkIjoiNzhlZWQ2YWYtODNkMC00OWU0LTg3MjEtMjBhNTQ1YTk4ZDQ3In0.IiHkGPV3aKuPkc_q-1efWQdnH2YM4QKtT2_MzyNZgQEmYMs84MneQZ-RM912mF8DZdH3Fpk2LSvfoUr6HvG5AA";
 
-  if (!DB_URL) {
-    console.error("❌ TURSO DATABASE URL MISSING AT BUILD TIME");
-    return [];
-  }
+  const client = createClient({ url: DB_URL, authToken: DB_TOKEN });
+  const rs = await client.execute("SELECT slug FROM articles WHERE slug IS NOT NULL");
 
-  const client = createClient({
-    url: DB_URL,
-    authToken: DB_TOKEN,
-  });
-
-  try {
-    const rs = await client.execute(
-      "SELECT slug FROM articles WHERE slug IS NOT NULL"
-    );
-
-    return rs.rows.map((row) => ({
-      params: { slug: row.slug },
-    }));
-  } catch (e) {
-    console.error("❌ Database fetch failed:", e);
-    return [];
-  }
+  return rs.rows.map((row) => ({
+    params: { slug: row.slug },
+  }));
 }
-
-// ⬇️ normal page code (runs AFTER paths are known)
-const DB_URL = import.meta.env.PUBLIC_TURSO_DATABASE_URL?.trim() ?? "";
-const DB_TOKEN = import.meta.env.PUBLIC_TURSO_AUTH_TOKEN?.trim() ?? "";
 
 const { slug } = Astro.params;
-
-let post = {
-  title: "Not found",
-  content: "",
-  image_url: "",
-};
-
-if (DB_URL && slug) {
-  const client = createClient({
-    url: DB_URL,
-    authToken: DB_TOKEN,
-  });
-
-  const rs = await client.execute({
-    sql: "SELECT * FROM articles WHERE slug = ?",
-    args: [slug],
-  });
-
-  post = rs.rows[0] ?? post;
-}
+const client = createClient({ url: DB_URL, authToken: DB_TOKEN });
+const rs = await client.execute({
+  sql: "SELECT * FROM articles WHERE slug = ?",
+  args: [slug]
+});
+const post = rs.rows[0];
 ---
 
 
