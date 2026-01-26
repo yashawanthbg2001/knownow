@@ -1,43 +1,44 @@
 ---
 import Database from 'better-sqlite3';
 import path from 'path';
+import BaseLayout from '../../layouts/BaseLayout.astro';
 
 export async function getStaticPaths() {
   const dbPath = path.resolve('content.db');
   const db = new Database(dbPath);
-  
-  try {
-    const rows = db.prepare("SELECT slug FROM articles WHERE slug IS NOT NULL").all();
-    console.log(`Building ${rows.length} article pages from SQLite...`);
-    
-    return rows.map((row) => ({
-      params: { slug: String(row.slug) },
-    }));
-  } catch (e) {
-    console.error("getStaticPaths SQLite Error:", e);
-    return [];
-  }
+  const rows = db.prepare("SELECT slug FROM articles WHERE slug IS NOT NULL").all();
+  return rows.map((row) => ({ params: { slug: String(row.slug) } }));
 }
 
 const { slug } = Astro.params;
 const dbPath = path.resolve('content.db');
 const db = new Database(dbPath);
 
-// Fetch the specific post for this slug
-const post = db.prepare("SELECT * FROM articles WHERE slug = ?").get(slug) || {
-  title: "Not Found",
-  content: "This article could not be found.",
-  image_url: ""
-};
+const post = db.prepare("SELECT * FROM articles WHERE slug = ?").get(slug);
+
+// Create SEO Description: Remove HTML tags and take first 150 chars
+const seoDescription = post.content.replace(/<[^>]*>/g, '').substring(0, 155) + "...";
 ---
 
-<article style="max-width: 750px; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.8; font-family: 'Inter', sans-serif;">
-  <a href="/knownow/" style="text-decoration: none; color: #666;">← Back to Pulse</a>
-  
-  {post.image_url && (
-    <img src={post.image_url} style="width: 100%; border-radius: 16px; margin: 2rem 0;" alt={post.title} />
-  )}
-  
-  <h1 style="font-size: 2.5rem; line-height: 1.2; margin-bottom: 2rem;">{post.title}</h1>
-  <div set:html={post.content} class="prose" />
-</article>
+<BaseLayout 
+  title={post.title} 
+  description={seoDescription} 
+  image={post.image_url} 
+  slug={slug}
+>
+  <article style="max-width: 750px; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.8; font-family: 'Inter', sans-serif;">
+    <a href="/knownow/" style="text-decoration: none; color: #0070f3; font-weight: bold;">← Back to Pulse</a>
+    
+    <div style="margin-top: 2rem; color: #666; font-size: 0.9rem;">
+       ⏱ {Math.ceil((post.word_count || 500) / 200)} min read • Published on {new Date(post.created_at).toLocaleDateString()}
+    </div>
+
+    {post.image_url && (
+      <img src={post.image_url} style="width: 100%; border-radius: 16px; margin: 2rem 0; box-shadow: 0 10px 30px rgba(0,0,0,0.1);" alt={post.title} />
+    )}
+    
+    <h1 style="font-size: 3rem; line-height: 1.1; margin-bottom: 2rem; letter-spacing: -0.02em;">{post.title}</h1>
+    
+    <div set:html={post.content} class="prose" />
+  </article>
+</BaseLayout>

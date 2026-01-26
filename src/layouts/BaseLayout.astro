@@ -1,0 +1,37 @@
+---
+const { title, description, image, slug, type = "article" } = Astro.props;
+const siteName = "KnowNow Technical Pulse";
+const domain = "https://yashawanthbg2001.github.io/knownow";
+const canonicalURL = new URL(slug ? `/article/${slug}/` : '', domain).href;
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+
+    <title>{title ? `${title} | ${siteName}` : siteName}</title>
+    <meta name="title" content={title || siteName} />
+    <meta name="description" content={description || "Latest technical deep-dives into 2026 tech trends."} />
+    <link rel="canonical" href={canonicalURL} />
+    <meta name="author" content="KnowNow Bot" />
+    <meta name="robots" content="index, follow" />
+
+    <meta property="og:type" content={type} />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:title" content={title || siteName} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={image || `${domain}/default-og.png`} />
+
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content={canonicalURL} />
+    <meta property="twitter:title" content={title || siteName} />
+    <meta property="twitter:description" content={description} />
+    <meta property="twitter:image" content={image || `${domain}/default-og.png`} />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

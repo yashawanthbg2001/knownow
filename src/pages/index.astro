@@ -1,6 +1,21 @@
 ---
 import Database from 'better-sqlite3';
 import path from 'path';
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+const dbPath = path.resolve('content.db');
+const db = new Database(dbPath);
+const articles = db.prepare("SELECT title, slug, image_url FROM articles ORDER BY id DESC LIMIT 12").all();
+---
+
+<BaseLayout 
+  title="Home" 
+  description="Your daily pulse on 2026 technical breakthroughs and AI advancements." 
+  type="website"
+>
+  <div class="container">
+     </div>
+</BaseLayout>
 
 let articles = [];
 
