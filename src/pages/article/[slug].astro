@@ -1,41 +1,43 @@
 ---
-import { createClient } from "@libsql/client";
+import Database from 'better-sqlite3';
+import path from 'path';
 
 export async function getStaticPaths() {
-  const DB_URL = "libsql://content-gen-yashawanth.aws-ap-south-1.turso.io";
-  const DB_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjkyNzI3MzAsImlkIjoiZmIwZWU4ZWItZmZhOS00Y2RmLTk3NDctNWI4ODViY2ZlNjlkIiwicmlkIjoiNzhlZWQ2YWYtODNkMC00OWU0LTg3MjEtMjBhNTQ1YTk4ZDQ3In0.IiHkGPV3aKuPkc_q-1efWQdnH2YM4QKtT2_MzyNZgQEmYMs84MneQZ-RM912mF8DZdH3Fpk2LSvfoUr6HvG5AA";
-
-  const client = createClient({ url: DB_URL, authToken: DB_TOKEN });
+  const dbPath = path.resolve('content.db');
+  const db = new Database(dbPath);
   
   try {
-    const rs = await client.execute("SELECT slug FROM articles");
-    console.log(`Found ${rs.rows.length} articles to build.`); // This shows up in GitHub logs
+    const rows = db.prepare("SELECT slug FROM articles WHERE slug IS NOT NULL").all();
+    console.log(`Building ${rows.length} article pages from SQLite...`);
     
-    return rs.rows.map((row) => ({
+    return rows.map((row) => ({
       params: { slug: String(row.slug) },
     }));
   } catch (e) {
-    console.error("Fetch error:", e);
+    console.error("getStaticPaths SQLite Error:", e);
     return [];
   }
 }
 
 const { slug } = Astro.params;
-const DB_URL = "libsql://content-gen-yashawanth.aws-ap-south-1.turso.io";
-const DB_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjkyNzI3MzAsImlkIjoiZmIwZWU4ZWItZmZhOS00Y2RmLTk3NDctNWI4ODViY2ZlNjlkIiwicmlkIjoiNzhlZWQ2YWYtODNkMC00OWU0LTg3MjEtMjBhNTQ1YTk4ZDQ3In0.IiHkGPV3aKuPkc_q-1efWQdnH2YM4QKtT2_MzyNZgQEmYMs84MneQZ-RM912mF8DZdH3Fpk2LSvfoUr6HvG5AA";
+const dbPath = path.resolve('content.db');
+const db = new Database(dbPath);
 
-const client = createClient({ url: DB_URL, authToken: DB_TOKEN });
-const rs = await client.execute({
-  sql: "SELECT * FROM articles WHERE slug = ?",
-  args: [slug]
-});
-const post = rs.rows[0];
+// Fetch the specific post for this slug
+const post = db.prepare("SELECT * FROM articles WHERE slug = ?").get(slug) || {
+  title: "Not Found",
+  content: "This article could not be found.",
+  image_url: ""
+};
 ---
 
-
 <article style="max-width: 750px; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.8; font-family: 'Inter', sans-serif;">
-  <a href="/" style="text-decoration: none; color: #666;">← Back to Pulse</a>
-  <img src={post.image_url as string} style="width: 100%; border-radius: 16px; margin: 2rem 0;" />
+  <a href="/knownow/" style="text-decoration: none; color: #666;">← Back to Pulse</a>
+  
+  {post.image_url && (
+    <img src={post.image_url} style="width: 100%; border-radius: 16px; margin: 2rem 0;" alt={post.title} />
+  )}
+  
   <h1 style="font-size: 2.5rem; line-height: 1.2; margin-bottom: 2rem;">{post.title}</h1>
   <div set:html={post.content} class="prose" />
 </article>

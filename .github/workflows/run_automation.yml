@@ -1,22 +1,37 @@
-name: Run Content Automation
+name: Run Content Automation (SQLite)
 on:
   schedule:
-    - cron: "0 */3 * * *" # Runs every 3 hours
-  workflow_dispatch: # Allows you to click a button to run it manually
+    - cron: "0 */3 * * *" # Every 3 hours
+  workflow_dispatch:
 
 jobs:
   automate:
     runs-on: ubuntu-latest
+    # Added permissions to allow the bot to push code changes back to the repo
+    permissions:
+      contents: write
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - run: pip install requests wikipedia libsql_client groq
+
+      # Removed libsql_client (not needed for SQLite)
+      - run: pip install requests wikipedia groq
+
       - name: Run Script
         env:
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: python automate.py
+
+      - name: Commit and Push Database
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add content.db
+          # Only commit if the file actually changed to avoid errors
+          git commit -m "Automated update: Added new technical article to SQLite" || echo "No changes to commit"
+          git push

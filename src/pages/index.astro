@@ -1,19 +1,18 @@
 ---
-import { createClient } from "@libsql/client";
-
-// Hardcoding for testing - Replace with your actual strings
-const DB_URL = "libsql://content-gen-yashawanth.aws-ap-south-1.turso.io";
-const DB_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjkyNzI3MzAsImlkIjoiZmIwZWU4ZWItZmZhOS00Y2RmLTk3NDctNWI4ODViY2ZlNjlkIiwicmlkIjoiNzhlZWQ2YWYtODNkMC00OWU0LTg3MjEtMjBhNTQ1YTk4ZDQ3In0.IiHkGPV3aKuPkc_q-1efWQdnH2YM4QKtT2_MzyNZgQEmYMs84MneQZ-RM912mF8DZdH3Fpk2LSvfoUr6HvG5AA";
+import Database from 'better-sqlite3';
+import path from 'path';
 
 let articles = [];
 
-// No more 'if' check needed since we know they exist now
 try {
-    const client = createClient({ url: DB_URL, authToken: DB_TOKEN });
-    const rs = await client.execute("SELECT title, slug, image_url FROM articles ORDER BY id DESC LIMIT 12");
-    articles = rs.rows;
+    // Resolve the path to the SQLite file in your repo root
+    const dbPath = path.resolve('content.db');
+    const db = new Database(dbPath);
+    
+    // Query the local file directly
+    articles = db.prepare("SELECT title, slug, image_url FROM articles ORDER BY id DESC LIMIT 12").all();
 } catch (e) {
-    console.error("Home page fetch failed:", e);
+    console.error("Local SQLite fetch failed:", e);
 }
 ---
 
@@ -35,16 +34,15 @@ try {
     <h1>KnowNow Technical Pulse</h1>
   </header>
 
-<div class="grid">
-  {articles.map((post) => (
-    /* We add /knownow/ to the start because that is your GitHub subfolder */
-    <a href={`/knownow/article/${post.slug}`} class="card">
-      <img src={post.image_url} alt={post.title} loading="lazy" />
-      <div class="card-body">
-        <h2>{post.title}</h2>
-        <span style="color: #0070f3; font-weight: 500;">Read Technical Analysis →</span>
-      </div>
-    </a>
-  ))}
-</div>
+  <div class="grid">
+    {articles.map((post) => (
+      <a href={`/knownow/article/${post.slug}`} class="card">
+        <img src={post.image_url} alt={post.title} loading="lazy" />
+        <div class="card-body">
+          <h2>{post.title}</h2>
+          <span style="color: #0070f3; font-weight: 500;">Read Technical Analysis →</span>
+        </div>
+      </a>
+    ))}
+  </div>
 </div>
