@@ -5,21 +5,25 @@ on:
   workflow_dispatch:
 
 jobs:
-  automate:
+  automate_and_deploy:
     runs-on: ubuntu-latest
-    # Added permissions to allow the bot to push code changes back to the repo
     permissions:
       contents: write
+      pages: write
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Important for clean pushes
 
+      # --- STEP 1: RUN THE PYTHON BOT ---
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      # Removed libsql_client (not needed for SQLite)
-      - run: pip install requests wikipedia groq
+      - name: Install Python Deps
+        run: pip install requests wikipedia groq beautifulsoup4
 
       - name: Run Script
         env:
@@ -27,11 +31,32 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: python automate.py
 
+      # --- STEP 2: SAVE DATABASE CHANGES ---
       - name: Commit and Push Database
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add content.db
-          # Only commit if the file actually changed to avoid errors
           git commit -m "Automated update: Added new technical article to SQLite" || echo "No changes to commit"
           git push
+
+      # --- STEP 3: BUILD AND DEPLOY ASTRO SITE ---
+      # This ensures the 404 error disappears because the site rebuilds with the new DB
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Astro Deps
+        run: npm install
+
+      - name: Build Astro Site
+        run: npm run build
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist # Or your Astro build output folder
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
