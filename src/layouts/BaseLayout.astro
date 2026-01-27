@@ -1,36 +1,38 @@
 ---
 const { 
-  title, // Page title
-  description, // Page meta description
-  image, // OpenGraph or Twitter image
-  slug, // Canonical path slug
-  type = "article" // Type (article, website, etc.)
+  title, 
+  description, 
+  image, 
+  slug, 
+  type = "article",
+  post // <-- ADD THIS: Receive the post object from the parent
 } = Astro.props;
 
-const siteName = "KnowNow Technical Pulse"; // Global site name
-const domain = "https://yashawanthbg2001.github.io/knownow"; // Base domain
-const canonicalURL = new URL(slug ? `/article/${slug}/` : '', domain).href; // Canonical URL (dynamic)
-const defaultDescription = "Explore KnowNow's insights and discover the latest 2026 tech trends."; // Fallback description
-const defaultImage = `${domain}/default-og.png`; // Default OG image
+const siteName = "KnowNow Technical Pulse"; 
+const domain = "https://yashawanthbg2001.github.io/knownow"; 
+const canonicalURL = new URL(slug ? `/article/${slug}/` : '', domain).href; 
+const defaultDescription = "Explore KnowNow's insights and discover the latest 2026 tech trends."; 
+const defaultImage = `${domain}/default-og.png`; 
+
+// Safety check for robots meta
+const robotsContent = post?.status === "noindex" ? "noindex" : "index, follow";
 ---
 
 <html lang="en">
   <head>
-    <!-- Base Metadata -->
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="generator" content={Astro.generator} />
 
-    <!-- Dynamic Title and Description -->
     <title>{title ? `${title} | ${siteName}` : siteName}</title>
     <meta name="title" content={title || siteName} />
     <meta name="description" content={description || defaultDescription} />
     <link rel="canonical" href={canonicalURL} />
     <meta name="author" content="KnowNow Team" />
-<meta name="robots" content={post.status === "noindex" ? "noindex" : "index, follow"} />
+    
+    <meta name="robots" content={robotsContent} />
 
-    <!-- OpenGraph Tags for Social Sharing -->
     <meta property="og:type" content={type} />
     <meta property="og:url" content={canonicalURL} />
     <meta property="og:title" content={title || siteName} />
@@ -38,54 +40,15 @@ const defaultImage = `${domain}/default-og.png`; // Default OG image
     <meta property="og:image" content={image || defaultImage} />
     <meta property="og:site_name" content={siteName} />
 
-    <!-- Twitter Card Metadata -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:url" content={canonicalURL} />
     <meta name="twitter:title" content={title || siteName} />
     <meta name="twitter:description" content={description || defaultDescription} />
     <meta name="twitter:image" content={image || defaultImage} />
 
-    <!-- SEO Enhancements and Preloads -->
-    <link rel="preconnect" href={domain} />
-    <link rel="dns-prefetch" href={domain} />
-    {image && <link rel="preload" as="image" href={image} />}
-    <link rel="preload" as="image" href="/favicon.svg" />
-
-    <!-- Progressive Enhancement Fonts -->
-    <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin="anonymous">
     <style>
-      /* Inline critical styling for font fallback */
-      body { font-family: Arial, sans-serif; white-space: pre-wrap; word-wrap: break-word; line-height: 1.6; }
+      body { font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; line-height: 1.6; color: #111; }
     </style>
-
-    <!-- Structured Data (Optional: Add JSON-LD if needed) -->
-    <script type="application/ld+json">
-    {{
-      "@context": "https://schema.org",
-      "@type": type,
-      "url": canonicalURL,
-      "name": title || siteName,
-      "description": description || defaultDescription,
-      "author": {
-        "@type": "Organization",
-        "name": "KnowNow Team"
-      },
-      "image": image || defaultImage,
-      "publisher": {
-        "@type": "Organization",
-        "name": siteName,
-        "url": domain,
-        "logo": {
-          "@type": "ImageObject",
-          "url": `${domain}/favicon.svg`
-        }
-      },
-      "mainEntityOfPage": {
-        "@type": "WebPage",
-        "@id": canonicalURL
-      }
-    }}
-    </script>
   </head>
   <body>
     <slot />
