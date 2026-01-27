@@ -3,42 +3,58 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 
-// Fetch article data based on the slug
+// 1. Fetch ALL data during build time
 export async function getStaticPaths() {
   const dbPath = path.resolve('content.db');
   const db = new Database(dbPath);
 
-  // Get all slugs from the database
-  const rows = db.prepare("SELECT slug FROM articles WHERE slug IS NOT NULL").all();
+  // Get all columns for all articles
+  const posts = db.prepare("SELECT * FROM articles WHERE slug IS NOT NULL").all();
+  db.close();
 
-  // Ensure we have valid slugs; otherwise, warn during build
-  if (!rows || rows.length === 0) {
-    console.warn("[Warning] No valid slugs found in the database.");
+  if (!posts || posts.length === 0) {
+    console.warn("[Warning] No posts found in content.db");
     return [];
   }
 
-  return rows.map((row) => ({ params: { slug: String(row.slug) } }));
+  return posts.map((post) => ({
+    params: { slug: String(post.slug) },
+    props: { post }, // This sends the data to the template below
+  }));
 }
 
-// Get data for the requested slug
+// 2. Access the data passed from getStaticPaths
+const { post } = Astro.props;
 const { slug } = Astro.params;
-const dbPath = path.resolve('content.db');
-const db = new Database(dbPath);
-const post = db.prepare("SELECT * FROM articles WHERE slug = ?").get(slug);
 
-// Handle missing posts
+// 3. Safety Check & SEO Helpers
 if (!post) {
-  console.error(`[Error] No post found for slug: "${slug}"`);
-  throw new Error(`No post found for slug: "${slug}" - Ensure your database contains the entry.`);
+  return Astro.redirect('/404');
 }
 
-// Safeguard article content and other fields
-const postContent = post.content || ""; // Default to empty content
-const seoDescription = post?.content
-  ? post.content.replace(/<[^>]*>/g, '').substring(0, 155) + "..."
-  : "Read the latest on cutting-edge tech in KnowNow.";
-const postTitle = post?.title || "Article Not Found";
-const postImage = post?.image_url || '/placeholder-image.png'; // Default image placeholder
+const postContent = post.content || "";
+const postTitle = post.title || "Technical Review";
+const postImage = post.image_url || '/placeholder-image.png';
+
+// Clean HTML tags for SEO description
+const seoDescription = postContent
+  ? postContent.replace(/<[^>]*>/g, '').substring(0, 155) + "..."
+  : "Expert technical analysis and hardware reviews on KnowNow.";
+
+// Helper to safely extract HTML sections without crashing the build
+const extractSection = (regex) => {
+  const match = postContent.match(regex);
+  return match ? match[0] : null;
+};
+
+// Regex patterns for your specific 12-page/day template
+const verdictRegex = /<div class="verdict-box">([\s\S]+?)<\/div>/;
+const prosConsRegex = /<ul class="pros-cons">([\s\S]+?)<\/ul>/;
+const performanceRegex = /<div class="performance-section">([\s\S]+?)<\/div>/;
+const specsRegex = /<div class="key-specs">([\s\S]+?)<\/div>/;
+const painPointsRegex = /<div class="pain-points">([\s\S]+?)<\/div>/;
+
+const verdictHtml = extractSection(verdictRegex);
 ---
 
 <BaseLayout 
@@ -47,69 +63,83 @@ const postImage = post?.image_url || '/placeholder-image.png'; // Default image 
   slug={slug}
   image={postImage}
 >
-  <article style="max-width: 750px; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.8; font-family: 'Inter', sans-serif;">
+  <article style="max-width: 750px; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.8; font-family: 'Inter', sans-serif; color: #111;">
     
-    <!-- Back Navigation -->
-    <a href="/knownow/" style="text-decoration: none; color: #0070f3; font-weight: bold;">← Back to Pulse</a>
+    <nav style="margin-bottom: 2rem;">
+      <a href="/knownow/" style="text-decoration: none; color: #0070f3; font-size: 0.9rem; font-weight: 600;">← Back to Pulse</a>
+    </nav>
 
-    <!-- Metadata -->
-    <div style="margin-top: 2rem; color: #666; font-size: 0.9rem;">
-      ⏱ {Math.ceil((post.word_count || 500) / 200)} min read • Published on {new Date(post.created_at).toLocaleDateString()}
+    <header>
+      <div style="color: #666; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;">
+        {post.category || 'Technology'} • {post.tier ? `Tier ${post.tier}` : ''}
+      </div>
+      <h1 style="font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.1; margin: 1rem 0; letter-spacing: -0.03em; font-weight: 800;">
+        {postTitle}
+      </h1>
+      <div style="color: #888; font-size: 0.95rem; margin-bottom: 2rem;">
+        Published on {new Date(post.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} 
+        • {Math.ceil((post.word_count || 500) / 200)} min read
+      </div>
+    </header>
+
+    <img src={postImage} alt={postTitle} style="width: 100%; height: auto; border-radius: 20px; margin-bottom: 3rem; box-shadow: 0 20px 40px rgba(0,0,0,0.08);" />
+
+    {verdictHtml && (
+      <div class="verdict-wrapper" set:html={verdictHtml} style="background: #f4f7ff; border-left: 5px solid #0070f3; padding: 2rem; border-radius: 12px; margin-bottom: 3rem;" />
+    )}
+
+    <div class="prose-content">
+      {extractSection(prosConsRegex) && (
+        <section style="margin-bottom: 3rem;">
+          <h2 style="font-size: 1.8rem; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; margin-bottom: 1.5rem;">Pros & Cons</h2>
+          <div set:html={extractSection(prosConsRegex)} />
+        </section>
+      )}
+
+      {extractSection(performanceRegex) && (
+        <section style="margin-bottom: 3rem;">
+          <h2 style="font-size: 1.8rem;">Real-World Performance</h2>
+          <div set:html={extractSection(performanceRegex)} />
+        </section>
+      )}
+
+      <section style="font-size: 1.1rem; color: #333;">
+        <div set:html={postContent
+          .replace(verdictRegex, '')
+          .replace(prosConsRegex, '')
+          .replace(performanceRegex, '')
+          .replace(specsRegex, '')
+          .replace(painPointsRegex, '')} 
+        />
+      </section>
+
+      {extractSection(specsRegex) && (
+        <section style="margin: 4rem 0; background: #fafafa; padding: 2rem; border-radius: 16px;">
+          <h2 style="margin-top: 0;">Technical Specifications</h2>
+          <div class="specs-table-wrapper" set:html={extractSection(specsRegex)} />
+        </section>
+      )}
     </div>
 
-    <!-- Article Image -->
-    {postImage && (
-      <img src={postImage} style="width: 100%; border-radius: 16px; margin: 2rem 0; box-shadow: 0 10px 30px rgba(0,0,0,0.1);" alt={postTitle} />
-    )}
+    <footer style="margin-top: 5rem; padding-top: 2rem; border-top: 1px solid #eee; font-size: 0.9rem; color: #888;">
+      <p>Original Source: <a href={post.source_url} target="_blank" style="color: #0070f3;">View Official Data</a></p>
+    </footer>
 
-    <!-- Title -->
-    <h1 style="font-size: 3rem; line-height: 1.1; margin-bottom: 2rem; letter-spacing: -0.02em;">{postTitle}</h1>
-    
-    <!-- Verdict Box -->
-    {postContent.match(/<div class="verdict-box">([\s\S]+?)<\/div>/) && (
-      <div class="verdict-box" 
-           set:html={postContent.match(/<div class="verdict-box">([\s\S]+?)<\/div>/)[0]} 
-           style="background: #f9f9f9; border-left: 6px solid #0070f3; padding: 1.5rem; margin-bottom: 2rem; border-radius: 12px; line-height: 1.6;" />
-    )}
-
-    <!-- Pros/Cons Section -->
-    {postContent.match(/<ul class="pros-cons">([\s\S]+?)<\/ul>/) && (
-      <section style="margin-bottom: 2rem;">
-        <h2>Pros & Cons</h2>
-        <div set:html={postContent.match(/<ul class="pros-cons">([\s\S]+?)<\/ul>/)[0]} />
-      </section>
-    )}
-
-    <!-- Additional Sections -->
-    {postContent.match(/<div class="performance-section">([\s\S]+?)<\/div>/) && (
-      <section style="margin-bottom: 2rem;">
-        <h2>Real-World Performance</h2>
-        <div set:html={postContent.match(/<div class="performance-section">([\s\S]+?)<\/div>/)[0]} />
-      </section>
-    )}
-
-    {postContent.match(/<div class="key-specs">([\s\S]+?)<\/div>/) && (
-      <section style="margin-bottom: 2rem;">
-        <h2>Key Specs</h2>
-        <div set:html={postContent.match(/<div class="key-specs">([\s\S]+?)<\/div>/)[0]} />
-      </section>
-    )}
-
-    {postContent.match(/<div class="pain-points">([\s\S]+?)<\/div>/) && (
-      <section style="margin-bottom: 2rem;">
-        <h2>Pain Points & FAQs</h2>
-        <div set:html={postContent.match(/<div class="pain-points">([\s\S]+?)<\/div>/)[0]} />
-      </section>
-    )}
-
-    <!-- Remaining Content -->
-    <section class="article-content prose" style="margin-bottom: 2rem;">
-      <div set:html={postContent.replace(/<div class="verdict-box">([\s\S]+?)<\/div>/, '')  // Remove Verdict
-                                 .replace(/<ul class="pros-cons">([\s\S]+?)<\/ul>/, '')        // Remove Pros/Cons
-                                 .replace(/<div class="performance-section">([\s\S]+?)<\/div>/, '') // Remove Performance
-                                 .replace(/<div class="key-specs">([\s\S]+?)<\/div>/, '')      // Remove Specs
-                                 .replace(/<div class="pain-points">([\s\S]+?)<\/div>/, '')} />
-    </section>
-    
   </article>
 </BaseLayout>
+
+<style is:global>
+  /* Styling the AI-generated HTML structures */
+  .verdict-box h2 { color: #0070f3; margin-top: 0; font-size: 1.4rem; }
+  .verdict-box ul { padding-left: 1.2rem; margin: 1rem 0; }
+  .verdict-box li { margin-bottom: 0.5rem; }
+  
+  .specs-table-wrapper table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  .specs-table-wrapper th, .specs-table-wrapper td { 
+    text-align: left; padding: 0.75rem; border-bottom: 1px solid #eee; 
+  }
+  .specs-table-wrapper th { font-weight: 700; color: #555; width: 30%; }
+
+  .prose-content h2 { font-size: 1.8rem; margin-top: 3rem; margin-bottom: 1.5rem; letter-spacing: -0.01em; }
+  .prose-content p { margin-bottom: 1.5rem; }
+</style>
