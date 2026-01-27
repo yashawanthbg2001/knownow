@@ -7,7 +7,16 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 export async function getStaticPaths() {
   const dbPath = path.resolve('content.db');
   const db = new Database(dbPath);
+
+  // Get all slugs from the database
   const rows = db.prepare("SELECT slug FROM articles WHERE slug IS NOT NULL").all();
+
+  // Ensure we have valid slugs; otherwise, warn during build
+  if (!rows || rows.length === 0) {
+    console.warn("[Warning] No valid slugs found in the database.");
+    return [];
+  }
+
   return rows.map((row) => ({ params: { slug: String(row.slug) } }));
 }
 
@@ -17,15 +26,26 @@ const dbPath = path.resolve('content.db');
 const db = new Database(dbPath);
 const post = db.prepare("SELECT * FROM articles WHERE slug = ?").get(slug);
 
-// Automatically create SEO description by stripping HTML and taking the first 150 characters
-const seoDescription = post.content.replace(/<[^>]*>/g, '').substring(0, 155) + "...";
+// Handle missing posts
+if (!post) {
+  console.error(`[Error] No post found for slug: "${slug}"`);
+  throw new Error(`No post found for slug: "${slug}" - Ensure your database contains the entry.`);
+}
+
+// Safeguard article content and other fields
+const postContent = post.content || ""; // Default to empty content
+const seoDescription = post?.content
+  ? post.content.replace(/<[^>]*>/g, '').substring(0, 155) + "..."
+  : "Read the latest on cutting-edge tech in KnowNow.";
+const postTitle = post?.title || "Article Not Found";
+const postImage = post?.image_url || '/placeholder-image.png'; // Default image placeholder
 ---
 
 <BaseLayout 
-  title={post.title} 
+  title={postTitle} 
   description={seoDescription} 
   slug={slug}
-  image={post.image_url}
+  image={postImage}
 >
   <article style="max-width: 750px; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.8; font-family: 'Inter', sans-serif;">
     
@@ -38,59 +58,57 @@ const seoDescription = post.content.replace(/<[^>]*>/g, '').substring(0, 155) + 
     </div>
 
     <!-- Article Image -->
-    {post.image_url && (
-      <img src={post.image_url} style="width: 100%; border-radius: 16px; margin: 2rem 0; box-shadow: 0 10px 30px rgba(0,0,0,0.1);" alt={post.title} />
+    {postImage && (
+      <img src={postImage} style="width: 100%; border-radius: 16px; margin: 2rem 0; box-shadow: 0 10px 30px rgba(0,0,0,0.1);" alt={postTitle} />
     )}
 
     <!-- Title -->
-    <h1 style="font-size: 3rem; line-height: 1.1; margin-bottom: 2rem; letter-spacing: -0.02em;">{post.title}</h1>
+    <h1 style="font-size: 3rem; line-height: 1.1; margin-bottom: 2rem; letter-spacing: -0.02em;">{postTitle}</h1>
     
     <!-- Verdict Box -->
-    {post.content.match(/<div class="verdict-box">([\s\S]+?)<\/div>/) && (
+    {postContent.match(/<div class="verdict-box">([\s\S]+?)<\/div>/) && (
       <div class="verdict-box" 
-           set:html={post.content.match(/<div class="verdict-box">([\s\S]+?)<\/div>/)[0]} 
+           set:html={postContent.match(/<div class="verdict-box">([\s\S]+?)<\/div>/)[0]} 
            style="background: #f9f9f9; border-left: 6px solid #0070f3; padding: 1.5rem; margin-bottom: 2rem; border-radius: 12px; line-height: 1.6;" />
     )}
 
     <!-- Pros/Cons Section -->
-    {post.content.match(/<ul class="pros-cons">([\s\S]+?)<\/ul>/) && (
+    {postContent.match(/<ul class="pros-cons">([\s\S]+?)<\/ul>/) && (
       <section style="margin-bottom: 2rem;">
         <h2>Pros & Cons</h2>
-        <div set:html={post.content.match(/<ul class="pros-cons">([\s\S]+?)<\/ul>/)[0]} />
+        <div set:html={postContent.match(/<ul class="pros-cons">([\s\S]+?)<\/ul>/)[0]} />
       </section>
     )}
 
-    <!-- Real-World Performance -->
-    {post.content.match(/<div class="performance-section">([\s\S]+?)<\/div>/) && (
+    <!-- Additional Sections -->
+    {postContent.match(/<div class="performance-section">([\s\S]+?)<\/div>/) && (
       <section style="margin-bottom: 2rem;">
         <h2>Real-World Performance</h2>
-        <div set:html={post.content.match(/<div class="performance-section">([\s\S]+?)<\/div>/)[0]} />
+        <div set:html={postContent.match(/<div class="performance-section">([\s\S]+?)<\/div>/)[0]} />
       </section>
     )}
 
-    <!-- Key Specs -->
-    {post.content.match(/<div class="key-specs">([\s\S]+?)<\/div>/) && (
+    {postContent.match(/<div class="key-specs">([\s\S]+?)<\/div>/) && (
       <section style="margin-bottom: 2rem;">
         <h2>Key Specs</h2>
-        <div set:html={post.content.match(/<div class="key-specs">([\s\S]+?)<\/div>/)[0]} />
+        <div set:html={postContent.match(/<div class="key-specs">([\s\S]+?)<\/div>/)[0]} />
       </section>
     )}
 
-    <!-- Pain Points / FAQs -->
-    {post.content.match(/<div class="pain-points">([\s\S]+?)<\/div>/) && (
+    {postContent.match(/<div class="pain-points">([\s\S]+?)<\/div>/) && (
       <section style="margin-bottom: 2rem;">
         <h2>Pain Points & FAQs</h2>
-        <div set:html={post.content.match(/<div class="pain-points">([\s\S]+?)<\/div>/)[0]} />
+        <div set:html={postContent.match(/<div class="pain-points">([\s\S]+?)<\/div>/)[0]} />
       </section>
     )}
 
     <!-- Remaining Content -->
     <section class="article-content prose" style="margin-bottom: 2rem;">
-      <div set:html={post.content.replace(/<div class="verdict-box">([\s\S]+?)<\/div>/, '')  // Remove Verdict
-                             .replace(/<ul class="pros-cons">([\s\S]+?)<\/ul>/, '')        // Remove Pros/Cons
-                             .replace(/<div class="performance-section">([\s\S]+?)<\/div>/, '') // Remove Performance
-                             .replace(/<div class="key-specs">([\s\S]+?)<\/div>/, '')      // Remove Specs
-                             .replace(/<div class="pain-points">([\s\S]+?)<\/div>/, '')} />
+      <div set:html={postContent.replace(/<div class="verdict-box">([\s\S]+?)<\/div>/, '')  // Remove Verdict
+                                 .replace(/<ul class="pros-cons">([\s\S]+?)<\/ul>/, '')        // Remove Pros/Cons
+                                 .replace(/<div class="performance-section">([\s\S]+?)<\/div>/, '') // Remove Performance
+                                 .replace(/<div class="key-specs">([\s\S]+?)<\/div>/, '')      // Remove Specs
+                                 .replace(/<div class="pain-points">([\s\S]+?)<\/div>/, '')} />
     </section>
     
   </article>
