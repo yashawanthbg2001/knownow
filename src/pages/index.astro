@@ -6,14 +6,27 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 const dbPath = path.resolve('content.db');
 const db = new Database(dbPath);
 
+// Pagination setup
+const ITEMS_PER_PAGE = 12;
+const currentPage = parseInt(Astro.url.searchParams.get('page')) || 1;
+const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+
+// Fetch articles from the database with pagination
 let articles = [];
+let totalArticles = 0;
 
 try {
-  // Query the local SQLite file directly
-  articles = db.prepare("SELECT title, slug, image_url FROM articles ORDER BY id DESC LIMIT 12").all();
+  articles = db
+    .prepare(`SELECT title, slug, image_url FROM articles ORDER BY id DESC LIMIT ? OFFSET ?`)
+    .all(ITEMS_PER_PAGE, offset);
+  totalArticles = db.prepare("SELECT COUNT(*) AS count FROM articles").get().count;
 } catch (e) {
   console.error("Local SQLite fetch failed:", e);
 }
+
+const totalPages = Math.ceil(totalArticles / ITEMS_PER_PAGE);
+const hasPreviousPage = currentPage > 1;
+const hasNextPage = currentPage < totalPages;
 ---
 
 <BaseLayout 
@@ -24,30 +37,61 @@ try {
   <style>
     .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 2rem; }
-    .card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: 0.3s; text-decoration: none; color: inherit; display: block;}
+    .card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: 0.3s; text-decoration: none; color: inherit; display: block; }
     .card:hover { transform: translateY(-5px); box-shadow: 0 12px 20px rgba(0,0,0,0.1); }
-    .card img { width: 100%; height: 200px; object-fit: cover; border: 0; }
+    .card img { width: 100%; height: 200px; max-height: 200px; object-fit: cover; border: 0; background-color: #f0f0f0; }
     .card-body { padding: 1.5rem; }
     .card h2 { margin: 0 0 1rem; font-size: 1.2rem; line-height: 1.4; color: #111; }
     .tag { background: #0070f3; color: white; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; display: inline-block; margin-bottom: 0.5rem; }
+    .pagination { text-align: center; margin: 2rem 0; }
+    .pagination a { color: #0070f3; text-decoration: none; padding: 0.5rem 1rem; border-radius: 6px; transition: background 0.2s; }
+    .pagination a:hover { background: #0070f3; color: white; }
+    .pagination .disabled { color: #aaa; pointer-events: none; }
   </style>
 
   <div class="container">
     <header style="margin-bottom: 3rem; text-align: center;">
       <span class="tag">Live Updates</span>
       <h1 style="font-size: 2.5rem; margin: 0;">KnowNow Technical Pulse</h1>
+      <p style="color: #666; margin-top: 0.5rem;">Explore the latest articles on emerging technologies and reviews.</p>
     </header>
 
-    <div class="grid">
-      {articles.map((post) => (
-        <a href={`/knownow/article/${post.slug}`} class="card">
-          <img src={post.image_url} alt={post.title} loading="lazy" />
-          <div class="card-body">
-            <h2>{post.title}</h2>
-            <span style="color: #0070f3; font-weight: 500;">Read Technical Analysis →</span>
-          </div>
-        </a>
-      ))}
+    <!-- Grid of Article Cards -->
+    {articles.length > 0 ? (
+      <div class="grid">
+        {articles.map((post) => (
+          <a href={`/knownow/article/${post.slug}`} class="card">
+            <img 
+              src={post.image_url || '/placeholder-image.png'} 
+              alt={post.title} 
+              loading="lazy" 
+            />
+            <div class="card-body">
+              <h2>{post.title}</h2>
+              <span style="color: #0070f3; font-weight: 500;">Read Technical Analysis →</span>
+            </div>
+          </a>
+        ))}
+      </div>
+    ) : (
+      <p style="text-align: center; color: #666;">No articles available yet. Check back later for exciting updates!</p>
+    )}
+
+    <!-- Pagination -->
+    <div class="pagination">
+      {hasPreviousPage ? (
+        <a href={`/?page=${currentPage - 1}`}>&larr; Previous</a>
+      ) : (
+        <span class="disabled">&larr; Previous</span>
+      )}
+
+      <span style="margin: 0 1rem;">Page {currentPage} of {totalPages}</span>
+
+      {hasNextPage ? (
+        <a href={`/?page=${currentPage + 1}`}>Next &rarr;</a>
+      ) : (
+        <span class="disabled">Next &rarr;</span>
+      )}
     </div>
   </div>
 </BaseLayout>

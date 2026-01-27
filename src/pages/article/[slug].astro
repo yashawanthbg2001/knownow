@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 
+// Fetch article data based on the slug
 export async function getStaticPaths() {
   const dbPath = path.resolve('content.db');
   const db = new Database(dbPath);
@@ -10,35 +11,87 @@ export async function getStaticPaths() {
   return rows.map((row) => ({ params: { slug: String(row.slug) } }));
 }
 
+// Get data for the requested slug
 const { slug } = Astro.params;
 const dbPath = path.resolve('content.db');
 const db = new Database(dbPath);
-
 const post = db.prepare("SELECT * FROM articles WHERE slug = ?").get(slug);
 
-// Create SEO Description: Remove HTML tags and take first 150 chars
+// Automatically create SEO description by stripping HTML and taking the first 150 characters
 const seoDescription = post.content.replace(/<[^>]*>/g, '').substring(0, 155) + "...";
 ---
 
 <BaseLayout 
   title={post.title} 
   description={seoDescription} 
-  image={post.image_url} 
   slug={slug}
+  image={post.image_url}
 >
   <article style="max-width: 750px; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.8; font-family: 'Inter', sans-serif;">
-    <a href="/knownow/" style="text-decoration: none; color: #0070f3; font-weight: bold;">← Back to Pulse</a>
     
+    <!-- Back Navigation -->
+    <a href="/knownow/" style="text-decoration: none; color: #0070f3; font-weight: bold;">← Back to Pulse</a>
+
+    <!-- Metadata -->
     <div style="margin-top: 2rem; color: #666; font-size: 0.9rem;">
-       ⏱ {Math.ceil((post.word_count || 500) / 200)} min read • Published on {new Date(post.created_at).toLocaleDateString()}
+      ⏱ {Math.ceil((post.word_count || 500) / 200)} min read • Published on {new Date(post.created_at).toLocaleDateString()}
     </div>
 
+    <!-- Article Image -->
     {post.image_url && (
       <img src={post.image_url} style="width: 100%; border-radius: 16px; margin: 2rem 0; box-shadow: 0 10px 30px rgba(0,0,0,0.1);" alt={post.title} />
     )}
-    
+
+    <!-- Title -->
     <h1 style="font-size: 3rem; line-height: 1.1; margin-bottom: 2rem; letter-spacing: -0.02em;">{post.title}</h1>
     
-    <div set:html={post.content} class="prose" />
+    <!-- Verdict Box -->
+    {post.content.match(/<div class="verdict-box">([\s\S]+?)<\/div>/) && (
+      <div class="verdict-box" 
+           set:html={post.content.match(/<div class="verdict-box">([\s\S]+?)<\/div>/)[0]} 
+           style="background: #f9f9f9; border-left: 6px solid #0070f3; padding: 1.5rem; margin-bottom: 2rem; border-radius: 12px; line-height: 1.6;" />
+    )}
+
+    <!-- Pros/Cons Section -->
+    {post.content.match(/<ul class="pros-cons">([\s\S]+?)<\/ul>/) && (
+      <section style="margin-bottom: 2rem;">
+        <h2>Pros & Cons</h2>
+        <div set:html={post.content.match(/<ul class="pros-cons">([\s\S]+?)<\/ul>/)[0]} />
+      </section>
+    )}
+
+    <!-- Real-World Performance -->
+    {post.content.match(/<div class="performance-section">([\s\S]+?)<\/div>/) && (
+      <section style="margin-bottom: 2rem;">
+        <h2>Real-World Performance</h2>
+        <div set:html={post.content.match(/<div class="performance-section">([\s\S]+?)<\/div>/)[0]} />
+      </section>
+    )}
+
+    <!-- Key Specs -->
+    {post.content.match(/<div class="key-specs">([\s\S]+?)<\/div>/) && (
+      <section style="margin-bottom: 2rem;">
+        <h2>Key Specs</h2>
+        <div set:html={post.content.match(/<div class="key-specs">([\s\S]+?)<\/div>/)[0]} />
+      </section>
+    )}
+
+    <!-- Pain Points / FAQs -->
+    {post.content.match(/<div class="pain-points">([\s\S]+?)<\/div>/) && (
+      <section style="margin-bottom: 2rem;">
+        <h2>Pain Points & FAQs</h2>
+        <div set:html={post.content.match(/<div class="pain-points">([\s\S]+?)<\/div>/)[0]} />
+      </section>
+    )}
+
+    <!-- Remaining Content -->
+    <section class="article-content prose" style="margin-bottom: 2rem;">
+      <div set:html={post.content.replace(/<div class="verdict-box">([\s\S]+?)<\/div>/, '')  // Remove Verdict
+                             .replace(/<ul class="pros-cons">([\s\S]+?)<\/ul>/, '')        // Remove Pros/Cons
+                             .replace(/<div class="performance-section">([\s\S]+?)<\/div>/, '') // Remove Performance
+                             .replace(/<div class="key-specs">([\s\S]+?)<\/div>/, '')      // Remove Specs
+                             .replace(/<div class="pain-points">([\s\S]+?)<\/div>/, '')} />
+    </section>
+    
   </article>
 </BaseLayout>
