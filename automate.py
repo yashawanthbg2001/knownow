@@ -482,10 +482,12 @@ async def main():
     noindex_flag = "noindex" if tier == 3 else "published"
 # ... after generate_deep_dive() call ...
 
+   # --- Inside your main() function, where you prepare data for the INSERT ---
+
     if content:
         slug = create_slug(page.title)
         
-        # 🟢 DYNAMIC IMAGE GENERATOR
+        # 1. Define styles based on your 5 core niches
         style_map = {
             "Smartphones": "sleek_minimalist_smartphone_product_photography_8k",
             "Laptops": "high_end_laptop_on_wooden_desk_cinematic_lighting",
@@ -493,12 +495,14 @@ async def main():
             "Wearables": "smartwatch_on_wrist_modern_active_lifestyle",
             "Smart Home Devices": "modern_minimalist_living_room_with_smart_tech"
         }
+        
+        # 2. Get the style or use a high-tech default
         style = style_map.get(category, "cutting_edge_technology_product_shot")
+        
+        # 3. Generate the actual URL
         image_url = f"https://image.pollinations.ai/prompt/{style}_{slug}?width=1280&height=720&nologo=true"
 
-        # Tier 3: Default behavior is to set status `noindex`
-        noindex_flag = "noindex" if tier == 3 else "published"
-
+        # 4. Save to Database with Error Handling
         try:
             conn = sqlite3.connect(DB_PATH)
             conn.execute(
@@ -516,7 +520,7 @@ async def main():
             print(f"❌ Database Save Error: {e}")
             update_job_status(kw_id, "failed")
     else:
-        # This handles both broad-topic skips and AI generation failures
+        # Handles broad-topic skips or AI generation failures
         print(f"⏭️ Job '{phrase}' was skipped or failed to generate.")
         update_job_status(kw_id, "skipped")
 
