@@ -6,18 +6,17 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 const dbPath = path.resolve('content.db');
 const db = new Database(dbPath);
 
-// Pagination setup
 const ITEMS_PER_PAGE = 12;
 const currentPage = parseInt(Astro.url.searchParams.get('page')) || 1;
 const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
-// Fetch articles from the database with pagination
 let articles = [];
 let totalArticles = 0;
 
 try {
+  // Added category and tier to the SELECT query
   articles = db
-    .prepare(`SELECT title, slug, image_url FROM articles ORDER BY id DESC LIMIT ? OFFSET ?`)
+    .prepare(`SELECT title, slug, image_url, category, tier FROM articles ORDER BY id DESC LIMIT ? OFFSET ?`)
     .all(ITEMS_PER_PAGE, offset);
   totalArticles = db.prepare("SELECT COUNT(*) AS count FROM articles").get().count;
 } catch (e) {
@@ -35,63 +34,94 @@ const hasNextPage = currentPage < totalPages;
   type="website"
 >
   <style>
-    .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 2rem; }
-    .card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: 0.3s; text-decoration: none; color: inherit; display: block; }
-    .card:hover { transform: translateY(-5px); box-shadow: 0 12px 20px rgba(0,0,0,0.1); }
-    .card img { width: 100%; height: 200px; max-height: 200px; object-fit: cover; border: 0; background-color: #f0f0f0; }
-    .card-body { padding: 1.5rem; }
-    .card h2 { margin: 0 0 1rem; font-size: 1.2rem; line-height: 1.4; color: #111; }
-    .tag { background: #0070f3; color: white; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; display: inline-block; margin-bottom: 0.5rem; }
-    .pagination { text-align: center; margin: 2rem 0; }
-    .pagination a { color: #0070f3; text-decoration: none; padding: 0.5rem 1rem; border-radius: 6px; transition: background 0.2s; }
-    .pagination a:hover { background: #0070f3; color: white; }
-    .pagination .disabled { color: #aaa; pointer-events: none; }
+    .container { max-width: 1300px; margin: 0 auto; padding: 4rem 1.5rem; }
+    
+    /* Premium Header Style */
+    .hero { text-align: center; margin-bottom: 5rem; }
+    .hero h1 { font-size: 4rem; letter-spacing: -0.05em; font-weight: 900; margin: 1rem 0; }
+    .hero p { font-size: 1.25rem; color: #555; max-width: 600px; margin: 0 auto; }
+
+    /* Grid & Cards */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 3rem; }
+    
+    .card { 
+      background: #fff; 
+      border-radius: 20px; 
+      overflow: hidden; 
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+      text-decoration: none; 
+      color: inherit; 
+      display: flex; 
+      flex-direction: column;
+      border: 1px solid #f0f0f0;
+    }
+    
+    .card:hover { transform: translateY(-10px); box-shadow: 0 30px 60px rgba(0,0,0,0.1); border-color: #0070f3; }
+    
+    .image-wrapper { position: relative; width: 100%; height: 240px; overflow: hidden; }
+    .card img { width: 100%; height: 100%; object-fit: cover; transition: 0.5s; }
+    .card:hover img { scale: 1.05; }
+
+    /* Badge Styles */
+    .badge-container { position: absolute; top: 1rem; left: 1rem; display: flex; gap: 0.5rem; }
+    .cat-badge { background: rgba(255, 255, 255, 0.95); color: #0070f3; padding: 5px 12px; border-radius: 50px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; backdrop-filter: blur(4px); }
+    .tier-badge { background: #0070f3; color: #fff; padding: 5px 12px; border-radius: 50px; font-size: 0.7rem; font-weight: 800; }
+
+    .card-body { padding: 2rem; flex-grow: 1; display: flex; flex-direction: column; }
+    .card h2 { margin: 0 0 1rem; font-size: 1.5rem; line-height: 1.2; font-weight: 800; letter-spacing: -0.02em; }
+    
+    .card-footer { margin-top: auto; padding-top: 1.5rem; border-top: 1px solid #f9f9f9; font-weight: 600; color: #0070f3; display: flex; align-items: center; justify-content: space-between; }
+    
+    /* Pagination */
+    .pagination { display: flex; justify-content: center; align-items: center; margin-top: 6rem; gap: 2rem; }
+    .nav-btn { background: #f4f7ff; color: #0070f3; padding: 12px 24px; border-radius: 12px; font-weight: 700; text-decoration: none; transition: 0.3s; }
+    .nav-btn:hover { background: #0070f3; color: #fff; }
+    .disabled { opacity: 0.3; pointer-events: none; }
   </style>
 
   <div class="container">
-    <header style="margin-bottom: 3rem; text-align: center;">
-      <span class="tag">Live Updates</span>
-      <h1 style="font-size: 2.5rem; margin: 0;">KnowNow Technical Pulse</h1>
-      <p style="color: #666; margin-top: 0.5rem;">Explore the latest articles on emerging technologies and reviews.</p>
+    <header class="hero">
+      <span style="color: #0070f3; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.8rem;">Insights for the Future</span>
+      <h1>Technical Pulse</h1>
+      <p>Deciphering 2026's hardware breakthroughs and AI innovations with expert-led reviews.</p>
     </header>
 
-    <!-- Grid of Article Cards -->
     {articles.length > 0 ? (
       <div class="grid">
         {articles.map((post) => (
-          <a href={`/knownow/article/${post.slug}`} class="card">
-            <img 
-              src={post.image_url || '/placeholder-image.png'} 
-              alt={post.title} 
-              loading="lazy" 
-            />
+          <a href={`/knownow/article/${post.slug}/`} class="card">
+            <div class="image-wrapper">
+              <img src={post.image_url || '/placeholder-image.png'} alt={post.title} />
+              <div class="badge-container">
+                <span class="cat-badge">{post.category || 'Tech'}</span>
+                {post.tier && <span class="tier-badge">T{post.tier}</span>}
+              </div>
+            </div>
             <div class="card-body">
               <h2>{post.title}</h2>
-              <span style="color: #0070f3; font-weight: 500;">Read Technical Analysis →</span>
+              <div class="card-footer">
+                <span>View Analysis</span>
+                <span>→</span>
+              </div>
             </div>
           </a>
         ))}
       </div>
     ) : (
-      <p style="text-align: center; color: #666;">No articles available yet. Check back later for exciting updates!</p>
+      <div style="text-align: center; padding: 5rem 0;">
+        <h2 style="color: #ccc;">Transmission Silent...</h2>
+        <p>The technical queue is currently being processed by the AI architect.</p>
+      </div>
     )}
 
-    <!-- Pagination -->
-    <div class="pagination">
-      {hasPreviousPage ? (
-        <a href={`/?page=${currentPage - 1}`}>&larr; Previous</a>
-      ) : (
-        <span class="disabled">&larr; Previous</span>
-      )}
-
-      <span style="margin: 0 1rem;">Page {currentPage} of {totalPages}</span>
-
-      {hasNextPage ? (
-        <a href={`/?page=${currentPage + 1}`}>Next &rarr;</a>
-      ) : (
-        <span class="disabled">Next &rarr;</span>
-      )}
-    </div>
+    <nav class="pagination">
+      <a href={hasPreviousPage ? `/?page=${currentPage - 1}` : '#'} class={`nav-btn ${!hasPreviousPage && 'disabled'}`}>
+        ← Previous
+      </a>
+      <span style="font-weight: 700; color: #888;">{currentPage} / {totalPages}</span>
+      <a href={hasNextPage ? `/?page=${currentPage + 1}` : '#'} class={`nav-btn ${!hasNextPage && 'disabled'}`}>
+        Next →
+      </a>
+    </nav>
   </div>
 </BaseLayout>

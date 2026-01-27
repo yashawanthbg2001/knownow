@@ -205,14 +205,23 @@ def discover_new_keywords():
         print(f"❌ Discovery Error: {e}")
 
 
-async def generate_deep_dive(topic, wiki, github, official, wiki_url, git_url=None, off_url=None, category="Technology"):
+async def generate_deep_dive(
+    topic,
+    wiki,
+    github,
+    official,
+    wiki_url,
+    git_url=None,
+    off_url=None,
+    category="Technology",
+):
     # Enforce single-product specificity but allow common tech descriptors
-    DISALLOWED_TERMS = ["series", " and ", " vs ", " lineup"] 
-    
+    DISALLOWED_TERMS = ["series", " and ", " vs ", " lineup"]
+
     # Check if the topic is too broad
     if any(term in topic.lower() for term in DISALLOWED_TERMS):
         print(f"⚠️ Skipping '{topic}': Topic is too broad/ambiguous.")
-        return None # Return None instead of raising an error to keep the loop running
+        return None  # Return None instead of raising an error to keep the loop running
 
     # AI prompt setup
     prompt = f"""
@@ -252,14 +261,18 @@ async def generate_deep_dive(topic, wiki, github, official, wiki_url, git_url=No
         chat = ai.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
-                {"role": "system", "content": "You are an expert product reviewer writing for a high-buy-intent audience."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You are an expert product reviewer writing for a high-buy-intent audience.",
+                },
+                {"role": "user", "content": prompt},
             ],
         )
         return chat.choices[0].message.content
     except Exception as e:
         print(f"❌ AI Generation Error: {e}")
         return None
+
 
 def notify_sheet(topic, status, category="N/A", word_count=0, details=""):
     SHEET_URL = "https://script.google.com/macros/s/AKfycbwaNy5Ei0iDmrEmj2iVp9gZdoVcd9y0r_d7Er7pi5zvvkjvlbRl5BcQQEqDwx-7fHVb/exec"
@@ -440,7 +453,7 @@ async def main():
     git_data = fetch_github_readme(git_url)
 
     # Generate content
- # Generate content
+    # Generate content
     try:
         content = await generate_deep_dive(
             topic=page.title,
@@ -459,37 +472,53 @@ async def main():
     if content:
         # ... (your existing database save logic) ...
         print(f"🏆 SUCCESS: {page.title} published.")
-        update_job_status(kw_id, "completed") # Mark as finished
+        update_job_status(kw_id, "completed")  # Mark as finished
     else:
         print(f"⏭️ Job '{phrase}' was skipped or failed.")
-        update_job_status(kw_id, "skipped") # Prevent re-processing bad keywords
+        update_job_status(kw_id, "skipped")  # Prevent re-processing bad keywords
 
     # Save content in the database
     # Tier 3: Default behavior is to set status `noindex`
     noindex_flag = "noindex" if tier == 3 else "published"
-    if content:
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute(
-            """
-        INSERT INTO articles (title, content, slug, image_url, category, source_url, word_count, status) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                page.title,
-                content,
-                create_slug(page.title),
-                "image_placeholder_url",
-                category,
-                page.url,
-                len(content.split()),
-                noindex_flag,
-            ),
-        )
-        conn.commit()
-        conn.close()
-    else:
-        print("Failed to generate content.")
+# ... after generate_deep_dive() call ...
 
-    update_job_status(kw_id, "completed")
+    if content:
+        slug = create_slug(page.title)
+        
+        # 🟢 DYNAMIC IMAGE GENERATOR
+        style_map = {
+            "Smartphones": "sleek_minimalist_smartphone_product_photography_8k",
+            "Laptops": "high_end_laptop_on_wooden_desk_cinematic_lighting",
+            "Audio": "professional_headphones_close_up_depth_of_field",
+            "Wearables": "smartwatch_on_wrist_modern_active_lifestyle",
+            "Smart Home Devices": "modern_minimalist_living_room_with_smart_tech"
+        }
+        style = style_map.get(category, "cutting_edge_technology_product_shot")
+        image_url = f"https://image.pollinations.ai/prompt/{style}_{slug}?width=1280&height=720&nologo=true"
+
+        # Tier 3: Default behavior is to set status `noindex`
+        noindex_flag = "noindex" if tier == 3 else "published"
+
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute(
+                """INSERT INTO articles (title, content, slug, image_url, category, source_url, word_count, status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (page.title, content, slug, image_url, category, page.url, len(content.split()), noindex_flag),
+            )
+            conn.commit()
+            conn.close()
+            
+            print(f"🏆 SUCCESS: {page.title} published.")
+            update_job_status(kw_id, "completed")
+            
+        except Exception as e:
+            print(f"❌ Database Save Error: {e}")
+            update_job_status(kw_id, "failed")
+    else:
+        # This handles both broad-topic skips and AI generation failures
+        print(f"⏭️ Job '{phrase}' was skipped or failed to generate.")
+        update_job_status(kw_id, "skipped")
 
 
 if __name__ == "__main__":

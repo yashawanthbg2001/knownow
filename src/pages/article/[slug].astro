@@ -3,144 +3,143 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 
-// 1. Fetch ALL data during build time
 export async function getStaticPaths() {
   const dbPath = path.resolve('content.db');
   const db = new Database(dbPath);
-
-  // Get all columns for all articles
   const posts = db.prepare("SELECT * FROM articles WHERE slug IS NOT NULL").all();
   db.close();
 
-  if (!posts || posts.length === 0) {
-    console.warn("[Warning] No posts found in content.db");
-    return [];
-  }
+  if (!posts || posts.length === 0) return [];
 
   return posts.map((post) => ({
     params: { slug: String(post.slug) },
-    props: { post }, // This sends the data to the template below
+    props: { post },
   }));
 }
 
-// 2. Access the data passed from getStaticPaths
 const { post } = Astro.props;
 const { slug } = Astro.params;
 
-// 3. Safety Check & SEO Helpers
-if (!post) {
-  return Astro.redirect('/404');
-}
+if (!post) return Astro.redirect('/404');
 
 const postContent = post.content || "";
 const postTitle = post.title || "Technical Review";
 const postImage = post.image_url || '/placeholder-image.png';
 
-// Clean HTML tags for SEO description
 const seoDescription = postContent
   ? postContent.replace(/<[^>]*>/g, '').substring(0, 155) + "..."
-  : "Expert technical analysis and hardware reviews on KnowNow.";
+  : "Expert tech analysis on KnowNow.";
 
-// Helper to safely extract HTML sections without crashing the build
-const extractSection = (regex) => {
+// Section Extractors
+const extract = (regex) => {
   const match = postContent.match(regex);
   return match ? match[0] : null;
 };
 
-// Regex patterns for your specific 12-page/day template
 const verdictRegex = /<div class="verdict-box">([\s\S]+?)<\/div>/;
-const prosConsRegex = /<ul class="pros-cons">([\s\S]+?)<\/ul>/;
-const performanceRegex = /<div class="performance-section">([\s\S]+?)<\/div>/;
-const specsRegex = /<div class="key-specs">([\s\S]+?)<\/div>/;
-const painPointsRegex = /<div class="pain-points">([\s\S]+?)<\/div>/;
+const specsRegex = /<table class="spec-table">([\s\S]+?)<\/table>/;
+const faqRegex = /<details class="faq-item">([\s\S]+?)<\/details>/g; // Match all FAQs
 
-const verdictHtml = extractSection(verdictRegex);
+const verdictHtml = extract(verdictRegex);
+const specsHtml = extract(specsRegex);
 ---
 
 <BaseLayout
-post={post} 
+  post={post} 
   title={postTitle} 
   description={seoDescription} 
   slug={slug}
   image={postImage}
 >
-  <article style="max-width: 750px; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.8; font-family: 'Inter', sans-serif; color: #111;">
-    
-    <nav style="margin-bottom: 2rem;">
-      <a href="/knownow/" style="text-decoration: none; color: #0070f3; font-size: 0.9rem; font-weight: 600;">← Back to Pulse</a>
+  <article class="review-container">
+    <nav class="top-nav">
+      <a href="/knownow/">← Back to Technical Pulse</a>
     </nav>
 
-    <header>
-      <div style="color: #666; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;">
-        {post.category || 'Technology'} • {post.tier ? `Tier ${post.tier}` : ''}
+    <header class="hero-header">
+      <div class="badge-row">
+        <span class="category-badge">{post.category || 'Hardware'}</span>
+        {post.tier && <span class="tier-badge">Tier {post.tier}</span>}
       </div>
-      <h1 style="font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.1; margin: 1rem 0; letter-spacing: -0.03em; font-weight: 800;">
-        {postTitle}
-      </h1>
-      <div style="color: #888; font-size: 0.95rem; margin-bottom: 2rem;">
-        Published on {new Date(post.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} 
-        • {Math.ceil((post.word_count || 500) / 200)} min read
+      <h1>{postTitle}</h1>
+      <div class="meta-line">
+        <time>{new Date(post.created_at).toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'})}</time>
+        <span class="separator">•</span>
+        <span>{Math.ceil((post.word_count || 500) / 200)} min read</span>
       </div>
     </header>
 
-    <img src={postImage} alt={postTitle} style="width: 100%; height: auto; border-radius: 20px; margin-bottom: 3rem; box-shadow: 0 20px 40px rgba(0,0,0,0.08);" />
-
-    {verdictHtml && (
-      <div class="verdict-wrapper" set:html={verdictHtml} style="background: #f4f7ff; border-left: 5px solid #0070f3; padding: 2rem; border-radius: 12px; margin-bottom: 3rem;" />
-    )}
-
-    <div class="prose-content">
-      {extractSection(prosConsRegex) && (
-        <section style="margin-bottom: 3rem;">
-          <h2 style="font-size: 1.8rem; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; margin-bottom: 1.5rem;">Pros & Cons</h2>
-          <div set:html={extractSection(prosConsRegex)} />
-        </section>
-      )}
-
-      {extractSection(performanceRegex) && (
-        <section style="margin-bottom: 3rem;">
-          <h2 style="font-size: 1.8rem;">Real-World Performance</h2>
-          <div set:html={extractSection(performanceRegex)} />
-        </section>
-      )}
-
-      <section style="font-size: 1.1rem; color: #333;">
-        <div set:html={postContent
-          .replace(verdictRegex, '')
-          .replace(prosConsRegex, '')
-          .replace(performanceRegex, '')
-          .replace(specsRegex, '')
-          .replace(painPointsRegex, '')} 
-        />
-      </section>
-
-      {extractSection(specsRegex) && (
-        <section style="margin: 4rem 0; background: #fafafa; padding: 2rem; border-radius: 16px;">
-          <h2 style="margin-top: 0;">Technical Specifications</h2>
-          <div class="specs-table-wrapper" set:html={extractSection(specsRegex)} />
-        </section>
-      )}
+    <div class="main-visual">
+      <img src={postImage} alt={postTitle} loading="eager" />
     </div>
 
-    <footer style="margin-top: 5rem; padding-top: 2rem; border-top: 1px solid #eee; font-size: 0.9rem; color: #888;">
-      <p>Original Source: <a href={post.source_url} target="_blank" style="color: #0070f3;">View Official Data</a></p>
-    </footer>
+    {verdictHtml && (
+      <section class="verdict-wrapper" set:html={verdictHtml} />
+    )}
 
+    <div class="content-body">
+       <div set:html={postContent
+          .replace(verdictRegex, '')
+          .replace(specsRegex, '')
+        } />
+    </div>
+
+    {specsHtml && (
+      <section class="specs-section">
+        <h2 class="section-heading">Technical Specifications</h2>
+        <div class="table-scroll" set:html={specsHtml} />
+      </section>
+    )}
+
+    <footer class="source-footer">
+      <p>Source Data: <a href={post.source_url} target="_blank">Official Documentation</a></p>
+    </footer>
   </article>
 </BaseLayout>
 
 <style is:global>
-  /* Styling the AI-generated HTML structures */
-  .verdict-box h2 { color: #0070f3; margin-top: 0; font-size: 1.4rem; }
-  .verdict-box ul { padding-left: 1.2rem; margin: 1rem 0; }
-  .verdict-box li { margin-bottom: 0.5rem; }
-  
-  .specs-table-wrapper table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
-  .specs-table-wrapper th, .specs-table-wrapper td { 
-    text-align: left; padding: 0.75rem; border-bottom: 1px solid #eee; 
-  }
-  .specs-table-wrapper th { font-weight: 700; color: #555; width: 30%; }
+  /* Base Layout & Typography */
+  .review-container { max-width: 800px; margin: 0 auto; padding: 2rem 1.5rem; color: #1a1a1a; }
+  .top-nav { margin-bottom: 2rem; }
+  .top-nav a { color: #0070f3; text-decoration: none; font-weight: 600; font-size: 0.9rem; }
 
-  .prose-content h2 { font-size: 1.8rem; margin-top: 3rem; margin-bottom: 1.5rem; letter-spacing: -0.01em; }
-  .prose-content p { margin-bottom: 1.5rem; }
+  /* Badges */
+  .badge-row { display: flex; gap: 0.75rem; margin-bottom: 1rem; }
+  .category-badge { background: #0070f3; color: white; padding: 4px 12px; border-radius: 50px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+  .tier-badge { background: #f0f0f0; color: #666; padding: 4px 12px; border-radius: 50px; font-size: 0.75rem; font-weight: 700; }
+
+  /* Headings */
+  h1 { font-size: clamp(2.5rem, 6vw, 4rem); line-height: 1.05; letter-spacing: -0.04em; margin-bottom: 1.5rem; font-weight: 900; }
+  h2 { font-size: 2rem; margin-top: 3rem; margin-bottom: 1.25rem; font-weight: 800; border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
+  
+  .meta-line { color: #666; font-size: 0.95rem; margin-bottom: 3rem; }
+
+  /* Visuals */
+  .main-visual img { width: 100%; height: auto; border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15); margin-bottom: 4rem; }
+
+  /* 🟢 Verdict Box Styling */
+  .verdict-box { background: #f8fbff; border: 1px solid #dbeafe; border-radius: 20px; padding: 2.5rem; margin-bottom: 4rem; }
+  .verdict-box h2 { border: none; color: #0070f3; margin-top: 0; font-size: 1.5rem; }
+  .verdict-box ul { list-style: none; padding: 0; }
+  .verdict-box li { position: relative; padding-left: 1.5rem; margin-bottom: 0.75rem; }
+  .verdict-box li::before { content: "→"; position: absolute; left: 0; color: #0070f3; font-weight: bold; }
+
+  /* 🟢 FAQ Accordion Styling (details/summary) */
+  details.faq-item { background: #fff; border: 1px solid #eee; border-radius: 12px; margin-bottom: 1rem; transition: 0.3s; }
+  details.faq-item[open] { border-color: #0070f3; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); }
+  summary { padding: 1.25rem; cursor: pointer; font-weight: 700; list-style: none; position: relative; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; float: right; color: #0070f3; font-size: 1.2rem; }
+  details[open] summary::after { content: "−"; }
+  .faq-answer { padding: 0 1.25rem 1.25rem; color: #444; line-height: 1.6; }
+
+  /* 🟢 Table Styling */
+  .table-scroll { overflow-x: auto; }
+  table.spec-table { width: 100%; border-collapse: collapse; margin: 2rem 0; font-size: 0.95rem; }
+  table.spec-table th, table.spec-table td { text-align: left; padding: 1rem; border-bottom: 1px solid #f0f0f0; }
+  table.spec-table th { background: #fafafa; color: #666; width: 35%; font-weight: 600; }
+
+  /* General Text */
+  p { margin-bottom: 1.5rem; font-size: 1.15rem; color: #333; }
+  .source-footer { margin-top: 6rem; border-top: 1px solid #eee; padding-top: 2rem; font-size: 0.9rem; color: #999; }
 </style>
