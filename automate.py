@@ -13,14 +13,14 @@ from datetime import datetime
 # --- CONFIGURATION ---
 DB_PATH = "content.db"
 # SECURITY: Key moved to env variable to prevent unauthorized use
-GROQ_API_KEY = os.getenv("GROQ_API_KEY") 
+GROQ_API_KEY = "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"
 GH_TOKEN = os.getenv("GH_TOKEN")
 REPO_OWNER = "yashawanthbg2001"
 REPO_NAME = "knownow"
 
 ai = Groq(api_key=GROQ_API_KEY)
 
-# --- 1. DATABASE & QUEUE HELPERS (YOUR ORIGINAL LOGIC) ---
+# --- 1. DATABASE & QUEUE HELPERS ---
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -87,7 +87,7 @@ def ingest_keywords(keywords_list, category="Technology"):
     conn.commit()
     conn.close()
 
-# --- 2. RESEARCH & IMAGE TOOLS (YOUR ORIGINAL LOGIC) ---
+# --- 2. RESEARCH & IMAGE TOOLS (ENHANCED SCRAPER) ---
 
 def get_wikipedia_image_pro(page_title):
     try:
@@ -120,21 +120,41 @@ def smart_wiki_search(phrase):
     return None
 
 def scrape_official_site(url):
+    """
+    Enhanced scraper to get raw official data. 
+    Uses real browser headers to avoid blocks.
+    """
     if not url or "wikipedia" in url: return ""
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"}
-        res = requests.get(url, headers=headers, timeout=12)
+        # Use headers that mimic a real user browser
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        }
+        res = requests.get(url, headers=headers, timeout=15)
+        res.raise_for_status() # Ensure we got a 200 OK
+        
         soup = BeautifulSoup(res.text, "html.parser")
-        for tag in soup(["nav", "footer", "script", "style", "header"]): tag.decompose()
-        content = soup.find("main") or soup.find("article") or soup.body
-        return re.sub(r"\s+", " ", content.get_text())[:4000]
-    except: return ""
+        
+        # Strip away junk so AI gets only high-value text
+        for tag in soup(["nav", "footer", "script", "style", "header", "aside", "form"]): 
+            tag.decompose()
+            
+        # Try to find the main content block first
+        content_area = soup.find("main") or soup.find("article") or soup.find("div", {"id": "content"}) or soup.body
+        
+        text = re.sub(r"\s+", " ", content_area.get_text())
+        return text[:5000] # Return enough data for a deep dive
+    except Exception as e:
+        print(f"⚠️ Scraper failed for {url}: {e}")
+        return ""
 
 def find_links_on_wiki(wiki_page):
     official = ""
     try:
+        # We look specifically for the 'official' or 'specs' link in Wikipedia references
         for link in wiki_page.references:
-            if any(x in link.lower() for x in ["official", "specs", "product", "github"]):
+            if any(x in link.lower() for x in ["official", "specs", "product", "github", "documentation"]):
                 official = link
                 break
     except: pass
@@ -150,56 +170,39 @@ def discover_new_keywords():
         ingest_keywords(new_items, f"Trends-{now.strftime('%m-%Y')}")
     except Exception as e: print(f"Discovery failed: {e}")
 
-# --- 3. THE AI CONTENT ARCHITECT (UPDATED PROMPT & SCHEMA) ---
+# --- 3. THE AI CONTENT ARCHITECT ---
 
 async def generate_deep_dive(topic, wiki, official, category, tier):
-    # This is where we force 2026 accuracy and add Schema
+    # Determine the context mix
+    official_context = f"OFFICIAL SITE DATA (High Accuracy): {official}" if official else "No official site data found."
+    
     prompt = f"""
-    Write a Tier {tier} Technical Review for '{topic}' as of January 2026. 
+    Write a Tier {tier} Technical Review for '{topic}' as of {datetime.now().strftime('%B %Y')}. 
     Category: {category}. Language: English.
 
-    KNOWLEDGE GUARDRAILS:
-    - If Tesla: Current chips are AI4.5/AI5. AI6 is future/unreleased.
-    - If HoloLens: Focus on HoloLens 2 (Snapdragon 850, 4GB RAM).
-    - If Snapdragon: Mention X Elite or 8 Gen 5 NPU performance.
+    SOURCES PROVIDED:
+    - Wikipedia: {wiki[:1000]}
+    - {official_context}
 
-    REQUIRED HTML STRUCTURE:
-    1. <script type="application/ld+json"> [INSERT PRODUCT & FAQ SCHEMA HERE] </script>
-    
-    2. <div class="verdict-box">
-        <h2>Our 2026 Verdict</h2>
-        <p>Opinionated summary.</p>
-        <strong>Best for:</strong> [User type] | <strong>Avoid if:</strong> [User type]
-    </div>
-
-    3. <h2>Real-World Experience</h2>
-       Context: {wiki[:800]} {official[:800]}. 
-       Focus on daily usability, speed, and 2026 market relevance.
-
-    4. <table class="spec-table">
-        <thead><tr><th>Feature</th><th>2026 Specification</th></tr></thead>
-        <tbody>...</tbody>
-    </table>
-
-    5. <h2>Expert Q&A</h2>
-        Use <details class="faq-item"><summary>Question</summary><div class="faq-answer">Answer</div></details>
-    
-    EDITORIAL RULES:
-    - List 2 specific weaknesses.
-    - No encyclopedic fluff; use expert technical tone.
+    INSTRUCTIONS:
+    1. If Official Data is provided, prioritize its technical specifications over Wikipedia.
+    2. Format as clean HTML with a <script type="application/ld+json"> schema block for Product and FAQ.
+    3. Include a <div class="verdict-box">, <h2>Real-World Experience</h2>, <table class="spec-table">, and <details class="faq-item">.
+    4. Mention 2 specific weaknesses or trade-offs.
+    5. Ensure the specs reflect the latest 2026 standards.
     """
     try:
         chat = ai.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
-                {"role": "system", "content": "You are a senior hardware critic. Output ONLY clean HTML with embedded JSON-LD schema."},
+                {"role": "system", "content": "You are a senior hardware critic. Merge provided Wikipedia and Official Site data into a high-authority review. Output ONLY clean HTML."},
                 {"role": "user", "content": prompt}
             ],
         )
         return chat.choices[0].message.content
     except: return None
 
-# --- 4. LOGIC & CATEGORIZATION (YOUR ORIGINAL LOGIC) ---
+# --- 4. LOGIC & CATEGORIZATION ---
 
 def get_tier(phrase):
     p = phrase.lower()
@@ -246,9 +249,17 @@ async def main():
 
             tier = get_tier(phrase)
             category = categorize(phrase)
-            off_url = find_links_on_wiki(page)
-            off_data = scrape_official_site(off_url)
             
+            # --- SCRAPER LOGIC: Get Official Data ---
+            off_url = find_links_on_wiki(page)
+            if off_url:
+                print(f"🔗 Official site found: {off_url}. Scraping...")
+                off_data = scrape_official_site(off_url)
+            else:
+                print("ℹ️ No official site link found in Wikipedia references.")
+                off_data = ""
+            
+            # --- AI GENERATION: Use both Wiki and Official ---
             content = await generate_deep_dive(page.title, page.summary, off_data, category, tier)
 
             if content:
@@ -265,7 +276,7 @@ async def main():
                     conn.execute(
                         """INSERT INTO articles (title, content, slug, image_url, category, tier, source_url, word_count, status) 
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (page.title, content, slug, image_url, category, tier, page.url, len(content.split()), status_flag)
+                        (page.title, content, slug, image_url, category, tier, off_url or page.url, len(content.split()), status_flag)
                     )
                     conn.commit()
                     conn.close()
