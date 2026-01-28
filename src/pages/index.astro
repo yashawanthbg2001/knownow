@@ -14,8 +14,7 @@ let articles = [];
 let totalArticles = 0;
 
 try {
-  // 🟢 FIX: We query articles regardless of 'published' status so 
-  // they show up on the home page even if set to 'noindex'.
+  // Query articles regardless of status
   articles = db
     .prepare(`
       SELECT title, slug, image_url, category, status 
@@ -56,6 +55,7 @@ const hasNextPage = currentPage < totalPages;
     .card { 
       background: #fff; border-radius: 24px; overflow: hidden; text-decoration: none; color: inherit; 
       display: flex; flex-direction: column; border: 1px solid #eaeaea; transition: all 0.3s ease;
+      position: relative;
     }
     .card:hover { transform: translateY(-8px); border-color: #0070f3; box-shadow: 0 20px 40px rgba(0,0,0,0.05); }
     
@@ -65,6 +65,11 @@ const hasNextPage = currentPage < totalPages;
 
     .badge { position: absolute; top: 1rem; left: 1rem; background: rgba(255,255,255,0.9); backdrop-filter: blur(8px);
                color: #0070f3; padding: 6px 14px; border-radius: 50px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; }
+
+    /* New: Draft/Noindex indicator for you to see which posts aren't indexed yet */
+    .status-dot { position: absolute; top: 1rem; right: 1rem; width: 10px; height: 10px; border-radius: 50%; }
+    .status-published { background: #10b981; box-shadow: 0 0 10px #10b981; }
+    .status-noindex { background: #f59e0b; }
 
     .card-content { padding: 1.5rem; flex-grow: 1; display: flex; flex-direction: column; }
     .card-content h2 { margin: 0 0 1rem; font-size: 1.4rem; line-height: 1.25; font-weight: 800; color: #111; }
@@ -87,11 +92,19 @@ const hasNextPage = currentPage < totalPages;
 
     {articles.length > 0 ? (
       <div class="grid">
-        {articles.map((post) => (
+        {articles.map((post, index) => (
           <a href={`/knownow/article/${post.slug}/`} class="card">
             <div class="img-box">
-              <img src={post.image_url || '/placeholder.png'} alt={post.title} loading="lazy" />
+              {/* Added loading="eager" for first 3 items to improve LCP speed */}
+              <img 
+                src={post.image_url || '/placeholder.png'} 
+                alt={post.title} 
+                loading={index < 3 ? "eager" : "lazy"} 
+              />
               <span class="badge">{post.category || 'Review'}</span>
+              
+              {/* Optional: Visual status tracker for the developer */}
+              <div class={`status-dot ${post.status === 'published' ? 'status-published' : 'status-noindex'}`} title={post.status}></div>
             </div>
             <div class="card-content">
               <h2>{post.title}</h2>
