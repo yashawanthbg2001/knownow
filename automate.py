@@ -13,7 +13,7 @@ from datetime import datetime
 # --- CONFIGURATION ---
 DB_PATH = "content.db"
 # SECURITY: Key moved to env variable to prevent unauthorized use
-GROQ_API_KEY = "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"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") 
 GH_TOKEN = os.getenv("GH_TOKEN")
 REPO_OWNER = "yashawanthbg2001"
 REPO_NAME = "knownow"
