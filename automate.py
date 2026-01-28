@@ -1,6 +1,5 @@
 import os
 import time
-import random
 import requests
 import wikipedia
 import sqlite3
@@ -13,7 +12,8 @@ from datetime import datetime
 
 # --- CONFIGURATION ---
 DB_PATH = "content.db"
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# Hardcoded key as per your request, ensure GH_TOKEN is in your environment for Actions
+GROQ_API_KEY = "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"
 GH_TOKEN = os.getenv("GH_TOKEN")
 REPO_OWNER = "yashawanthbg2001"
 REPO_NAME = "knownow"
@@ -21,7 +21,6 @@ REPO_NAME = "knownow"
 ai = Groq(api_key=GROQ_API_KEY)
 
 # --- 1. DATABASE & QUEUE HELPERS ---
-
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -36,494 +35,257 @@ def init_db():
     )""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS articles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT,
+        title TEXT UNIQUE,
         content TEXT,
         slug TEXT UNIQUE,
         image_url TEXT,
         category TEXT,
+        tier INTEGER DEFAULT 2,
         status TEXT DEFAULT 'published',
         source_url TEXT,
         word_count INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )""")
     conn.commit()
-    return conn
-
+    conn.close()
 
 def get_queue_health():
     conn = sqlite3.connect(DB_PATH)
-    count = conn.execute(
-        "SELECT COUNT(*) FROM keywords WHERE status = 'pending'"
-    ).fetchone()[0]
+    count = conn.execute("SELECT COUNT(*) FROM keywords WHERE status = 'pending'").fetchone()[0]
     conn.close()
     return count
 
-
-def get_next_job():
+def get_next_batch(size=2):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, phrase FROM keywords WHERE status = 'pending' ORDER BY priority DESC, id ASC LIMIT 1"
-    )
-    row = cursor.fetchone()
+    cursor.execute("SELECT id, phrase FROM keywords WHERE status = 'pending' ORDER BY priority DESC, id ASC LIMIT ?", (size,))
+    rows = cursor.fetchall()
     conn.close()
-    return row
-
+    return rows
 
 def update_job_status(kw_id, status):
     conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        "UPDATE keywords SET status = ?, last_attempt = CURRENT_TIMESTAMP WHERE id = ?",
-        (status, kw_id),
-    )
+    conn.execute("UPDATE keywords SET status = ?, last_attempt = CURRENT_TIMESTAMP WHERE id = ?", (status, kw_id))
     conn.commit()
     conn.close()
 
+def article_exists(title):
+    conn = sqlite3.connect(DB_PATH)
+    exists = conn.execute("SELECT 1 FROM articles WHERE title = ?", (title,)).fetchone()
+    conn.close()
+    return exists is not None
 
 def ingest_keywords(keywords_list, category="Technology"):
-    """
-    Ingests a list of keywords into the database, splitting multi-model phrases
-    into separate jobs for individual products where necessary.
-    """
-    # Common phrases or delimiters that indicate multiple variants/products
-    MULTI_SPLIT_MARKERS = [" and ", ",", "/", "+", " or "]
-
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     for phrase in keywords_list:
-        # Check if the phrase mentions multiple variants
-        if any(marker in phrase.lower() for marker in MULTI_SPLIT_MARKERS):
-            for product in re.split(
-                r" and |,|/|\+", phrase
-            ):  # Split the phrase by markers
-                product = product.strip()
-                if product:  # Avoid empty splits after stripping
-                    cursor.execute(
-                        "INSERT OR IGNORE INTO keywords (phrase, category) VALUES (?, ?)",
-                        (product, category),
-                    )
-        else:
-            cursor.execute(
-                "INSERT OR IGNORE INTO keywords (phrase, category) VALUES (?, ?)",
-                (phrase.strip(), category),
-            )
-
+        parts = re.split(r" and |,|/|\+", phrase)
+        for p in parts:
+            clean_p = p.strip()
+            if clean_p:
+                cursor.execute("INSERT OR IGNORE INTO keywords (phrase, category) VALUES (?, ?)", (clean_p, category))
     conn.commit()
     conn.close()
 
+# --- 2. RESEARCH & IMAGE TOOLS ---
 
-# --- 2. RESEARCH TOOLS ---
-
-
-def fetch_github_readme(repo_path):
-    if not repo_path or "github.com" not in repo_path:
-        return ""
-    path = repo_path.replace("https://github.com/", "").strip("/")
-    url = f"https://api.github.com/repos/{path}/readme"
-    headers = {"Authorization": f"token {GH_TOKEN}"} if GH_TOKEN else {}
+def get_wikipedia_image_pro(page_title):
+    """Fetches high-res images and validates they are public-facing URLs."""
     try:
-        res = requests.get(url, headers=headers, timeout=10)
-        if res.status_code == 200:
-            content_b64 = res.json().get("content", "")
-            return base64.b64decode(content_b64).decode("utf-8")[:3500]
-    except:
-        return ""
+        clean_title = re.sub(r'\([^)]*\)', '', page_title).strip()
+        URL = "https://en.wikipedia.org/w/api.php"
+        headers = {'User-Agent': 'KnowNowBot/1.0 (yashawanthbg@example.com)'}
+        PARAMS = {
+            "action": "query", "format": "json", "titles": clean_title,
+            "prop": "pageimages", "piprop": "original", "formatversion": "2"
+        }
+        res = requests.get(URL, params=PARAMS, headers=headers, timeout=10).json()
+        pages = res.get("query", {}).get("pages", [])
+        
+        if pages and "original" in pages[0]:
+            img_url = pages[0]["original"]["source"]
+            # 🟢 VALIDATION: Ensure it's not an internal /v1/AUTH path
+            if "upload.wikimedia.org" in img_url:
+                return img_url
+    except: pass
+    return None
 
+def smart_wiki_search(phrase):
+    try:
+        return wikipedia.page(phrase, auto_suggest=False)
+    except wikipedia.exceptions.DisambiguationError as e:
+        return wikipedia.page(e.options[0], auto_suggest=False)
+    except wikipedia.exceptions.PageError:
+        search_res = wikipedia.search(phrase)
+        if search_res:
+            return wikipedia.page(search_res[0], auto_suggest=False)
+    except: return None
+    return None
 
 def scrape_official_site(url):
-    if not url or "wikipedia" in url:
-        return ""
+    if not url or "wikipedia" in url: return ""
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        }
-        res = requests.get(url, headers=headers, timeout=15)
-        if res.status_code != 200:
-            return ""
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"}
+        res = requests.get(url, headers=headers, timeout=12)
         soup = BeautifulSoup(res.text, "html.parser")
-        for tag in soup(["nav", "footer", "script", "style", "header"]):
-            tag.decompose()
-        content_area = soup.find("main") or soup.find("article") or soup.body
-        important_elements = content_area.find_all(["table", "ul", "p", "h2"])
-        text = " ".join([i.get_text() for i in important_elements])
-        return re.sub(r"\s+", " ", text)[:5000]
-    except:
-        return ""
-
+        for tag in soup(["nav", "footer", "script", "style", "header"]): tag.decompose()
+        content = soup.find("main") or soup.find("article") or soup.body
+        return re.sub(r"\s+", " ", content.get_text())[:4000]
+    except: return ""
 
 def find_links_on_wiki(wiki_page):
-    official, github = "", ""
+    official = ""
     try:
         for link in wiki_page.references:
-            if "github.com" in link and not github:
-                github = link
-            elif (
-                any(
-                    x in link.lower()
-                    for x in ["official", "product", "specs", "developer"]
-                )
-                and not official
-            ):
+            if any(x in link.lower() for x in ["official", "specs", "product", "github"]):
                 official = link
-    except:
-        pass
-    return official, github
+                break
+    except: pass
+    return official
 
-
-# --- 3. AI & CONTENT TOOLS ---
-
-
-def create_slug(text):
-    text = text.lower()
-    text = re.sub(r"[^a-z0-9]+", "-", text)
-    return f"{text.strip('-')}-{int(time.time())}"
-
+# --- 3. TREND DISCOVERY ---
 
 def discover_new_keywords():
-    print("\n--- 🔍 DYNAMIC TREND DISCOVERY ---")
+    print("\n--- 🔍 DISCOVERING 2026 TRENDS ---")
     now = datetime.now()
-    current_month_year = now.strftime("%B %Y")
-
-    # Force the AI to provide specific model names
-    prompt = f"""
-    It is currently {current_month_year}. 
-    Identify 10 SPECIFIC trending product models (e.g., 'Sony WH-1000XM5', 'Samsung Galaxy S24 Ultra', 'MacBook Air M3'). 
-    Do not provide general series names like 'RTX 40 series' or 'iPhone 15 lineup'.
-    Focus on: Smartphones, Laptops, Audio, Smart Home, and Wearables.
-    Return ONLY names separated by commas.
-    """
+    prompt = f"Identify 10 high-value specific product models trending in {now.strftime('%B %Y')}. Focus on 2026 flagships and AI hardware. Return comma separated list."
     try:
-        completion = ai.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-        )
-        new_niches = [
-            n.strip() for n in completion.choices[0].message.content.split(",")
-        ]
-        ingest_keywords(new_niches, category=f"Discovery-{current_month_year}")
-    except Exception as e:
-        print(f"❌ Discovery Error: {e}")
+        chat = ai.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
+        new_items = chat.choices[0].message.content.split(",")
+        ingest_keywords(new_items, f"Trends-{now.strftime('%m-%Y')}")
+    except Exception as e: print(f"Discovery failed: {e}")
 
+# --- 4. AI CONTENT ARCHITECT ---
 
-async def generate_deep_dive(
-    topic,
-    wiki,
-    github,
-    official,
-    wiki_url,
-    git_url=None,
-    off_url=None,
-    category="Technology",
-):
-    # Enforce single-product specificity but allow common tech descriptors
-    DISALLOWED_TERMS = ["series", " and ", " vs ", " lineup"]
-
-    # Check if the topic is too broad
-    if any(term in topic.lower() for term in DISALLOWED_TERMS):
-        print(f"⚠️ Skipping '{topic}': Topic is too broad/ambiguous.")
-        return None  # Return None instead of raising an error to keep the loop running
-
-    # AI prompt setup
+async def generate_deep_dive(topic, wiki, official, category, tier):
     prompt = f"""
-    Your task is to review the product '{topic}' as of 2026. 
+    Write a Tier {tier} Technical Review for '{topic}' as of 2026. 
+    Category: {category}. Language: English.
+
+    REQUIRED HTML STRUCTURE:
+    1. <div class="verdict-box">
+       <h2>Our Verdict</h2>
+       <p>Opinionated summary.</p>
+       <strong>Best for:</strong> [User type] | <strong>Avoid if:</strong> [User type]
+    </div>
+
+    2. <h2>Real-World Performance</h2>
+       Context: {wiki[:800]} {official[:800]}. 
+       Focus on daily speed and 2026 relevance.
+
+    3. <table class="spec-table">
+       <thead><tr><th>Feature</th><th>Specification</th></tr></thead>
+       <tbody>...</tbody>
+    </table>
+
+    4. <h2>Frequently Asked Questions</h2>
+       Use <details class="faq-item"><summary>Question</summary><div class="faq-answer">Answer</div></details>
     
-    **STRUCTURE AND RULES:**
-    - Start with a <div class="verdict-box">:
-      - Summarize who should buy this product (2-3 bullet points).
-      - Summarize who should avoid this product (2-3 bullet points).
-      - Provide a short, opinionated final verdict.
-    - Include a **"Should You Buy the {topic} in 2026?"** text.
-    - Write **Real-World Performance Insights**:
-      - Daily user experience, not just stats ("feels fluid even on heavy multitasking").
-      - Specifics (gaming, battery, camera details, as applicable)
-    - Include a **Key Specs Table with Explanations**:
-      - Example: "8GB RAM – Smooth for multitasking but heavy apps may slow down."
-    - Include **2-5 Buyer FAQs** (target high purchase intent).
-    - Mention at least 2 concrete **pain points or trade-offs**.
-
-    **DO NOT:**
-    - Cover multiple products (focus only on '{topic}' if any variants exist).
-    - Write encyclopedic/wikipedia-style content. This must be opinionated.
-    - Avoid deep theoretical architecture discussions—keep it relevant to buyers as of 2026.
-
-    **INPUT CONTEXT:**
-    - Wikipedia Summary: {wiki[:1200]}
-    - GitHub Data: {github[:800]}
-    - Official Website Data: {official[:800]}
-    - Wikipedia URL: {wiki_url}
-    - GitHub URL (if available): {git_url or "N/A"}
-    - Official Documentation URL (if available): {off_url or "N/A"}
-
-    Write clean and valid HTML output. Your content must follow the structure exactly as described.
+    EDITORIAL RULES:
+    - Mention 2 honest weaknesses.
+    - No encyclopedic fluff. 
+    - Be brutally honest about trade-offs.
     """
     try:
-        # Generate the article content using the AI model
         chat = ai.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
-                {
-                    "role": "system",
-                    "content": "You are an expert product reviewer writing for a high-buy-intent audience.",
-                },
-                {"role": "user", "content": prompt},
+                {"role": "system", "content": "You are a senior hardware critic. Output ONLY clean HTML."},
+                {"role": "user", "content": prompt}
             ],
         )
         return chat.choices[0].message.content
-    except Exception as e:
-        print(f"❌ AI Generation Error: {e}")
-        return None
+    except: return None
 
-
-def notify_sheet(topic, status, category="N/A", word_count=0, details=""):
-    SHEET_URL = "https://script.google.com/macros/s/AKfycbwaNy5Ei0iDmrEmj2iVp9gZdoVcd9y0r_d7Er7pi5zvvkjvlbRl5BcQQEqDwx-7fHVb/exec"
-    payload = {
-        "topic": topic,
-        "status": status,
-        "category": category,
-        "word_count": word_count,
-        "details": details,
-    }
-    try:
-        requests.post(SHEET_URL, json=payload, timeout=10)
-    except Exception as e:
-        print(f"📡 Sheet Notification Failed: {e}")
-
-
-# --- 4. THE MAIN LOOP ---
-
-# Allowed categories for content generation
-ALLOWED_CATEGORIES = [
-    "smartphones",
-    "smartphone",
-    "laptops",
-    "laptop",
-    "notebook",
-    "audio",
-    "headphones",
-    "earbuds",
-    "speakers",
-    "earphones",
-    "smart home",
-    "thermostat",
-    "light",
-    "bulb",
-    "switch",
-    "plug",
-    "hub",
-    "wearables",
-    "smartwatch",
-    "watch",
-    "fitness",
-    "tracker",
-    "band",
-]
-
-
-def categorize_phrase(phrase):
-    """
-    Determines the product category based on keywords in the phrase.
-    Returns the matching category or None if no match is found.
-    """
-    phrase_lower = phrase.lower()
-    if any(
-        x in phrase_lower for x in ["smartphone", "phone", "galaxy", "iphone", "pixel"]
-    ):
-        return "Smartphones"
-    elif any(x in phrase_lower for x in ["laptop", "notebook", "macbook"]):
-        return "Laptops"
-    elif any(
-        x in phrase_lower
-        for x in ["headphones", "earbuds", "earphones", "audio", "speakers"]
-    ):
-        return "Audio"
-    elif any(
-        x in phrase_lower
-        for x in ["smart home", "thermostat", "light", "bulb", "switch", "plug", "hub"]
-    ):
-        return "Smart Home Devices"
-    elif any(
-        x in phrase_lower
-        for x in ["wearables", "watch", "smartwatch", "fitness", "tracker", "band"]
-    ):
-        return "Wearables"
-    return None
-
+# --- 5. LOGIC & CATEGORIZATION ---
 
 def get_tier(phrase):
-    """
-    Classifies a keyword or phrase (product/topic) into a Tier.
-    Returns Tier 1, Tier 2, or Tier 3.
-    """
-    phrase_lower = phrase.lower()
+    p = phrase.lower()
+    if any(x in p for x in ["iphone 17", "s26", "macbook pro", "pixel 10", "s25"]): return 1
+    if any(x in p for x in ["specs", "vs", "comparison"]): return 3
+    return 2
 
-    # Tier 1: High-demand or flagship products
-    if any(
-        x in phrase_lower for x in ["iphone 15", "galaxy s24", "macbook pro", "pixel 9"]
-    ):
-        return 1
+def categorize(phrase):
+    p = phrase.lower()
+    if any(x in p for x in ["phone", "iphone", "galaxy", "pixel"]): return "Smartphones"
+    if any(x in p for x in ["laptop", "macbook", "notebook"]): return "Laptops"
+    if any(x in p for x in ["audio", "buds", "ear", "wh-"]): return "Audio"
+    if any(x in p for x in ["watch", "band", "fitbit"]): return "Wearables"
+    return "Smart Home Devices"
 
-    # Tier 2: Mid-range or older products
-    if any(
-        x in phrase_lower
-        for x in [
-            "iphone 14",
-            "galaxy buds",
-            "macbook air",
-            "apple watch se",
-            "rtx 4060",
-        ]
-    ):
-        return 2
+def create_slug(text):
+    text = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return f"{text}-{int(time.time())}"
 
-    # Tier 3: Long-tail queries or supporting pages
-    if any(
-        x in phrase_lower
-        for x in ["specs", "compatibility", "vs", "comparison", "feature", "review"]
-    ):
-        return 3
-
-    # Default to Tier 3 for uncategorized products/topics
-    return 3
-
-
-def can_generate_more_tier(tier):
-    """
-    Checks whether more articles can be generated for a specific Tier.
-    Limits:
-        - Tier 1: 3 articles/day.
-        - Tier 2: 8 articles/day.
-        - Tier 3: 2 articles/day.
-    """
-    today = datetime.now().strftime("%Y-%m-%d")
-    conn = sqlite3.connect(DB_PATH)
-    tier_count = conn.execute(
-        "SELECT COUNT(*) FROM articles WHERE DATE(created_at) = ? AND tier = ?",
-        (today, tier),
-    ).fetchone()[0]
-    conn.close()
-    if tier == 1 and tier_count >= 3:
-        return False
-    if tier == 2 and tier_count >= 8:
-        return False
-    if tier == 3 and tier_count >= 2:
-        return False
-    return True
-
+# --- 6. MAIN EXECUTION ---
 
 async def main():
     init_db()
-    print("\n--- 🛠️ WORKFLOW INITIALIZED ---")
-
     if get_queue_health() < 3:
         discover_new_keywords()
 
-    job = get_next_job()
-    if not job:
-        print("📭 Nothing to process.")
+    # 🟢 BATCH PROCESSING: Process 2 articles at once
+    jobs = get_next_batch(2)
+    if not jobs:
+        print("📭 Queue empty.")
         return
 
-    kw_id, phrase = job
-    print(f"\n--- 🚀 PROCESSING JOB: {phrase} ---")
-
-    # Categorize the phrase by Tier
-    tier = get_tier(phrase)
-    print(f"📂 Categorized as: Tier {tier}")
-
-    # Tier-specific processing logic
-    if tier == 1:
-        print(
-            "⏫ High-priority content! Manually review this output for quality control."
-        )
-    elif tier == 2:
-        print("⚙️ Standard content. Follow template.")
-    elif tier == 3:
-        print("📄 Reference/low-priority content. May be noindexed.")
-
-    # Fetch Wikipedia and other sources
-    search = wikipedia.search(phrase)
-    if not search:
-        print(f"❌ No Wikipedia results found for {phrase}")
-        update_job_status(kw_id, "failed")
-        return
-
-    page = wikipedia.page(search[0], auto_suggest=False)
-    category = categorize_phrase(phrase)
-    off_url, git_url = find_links_on_wiki(page)
-    off_data = scrape_official_site(off_url)
-    git_data = fetch_github_readme(git_url)
-
-    # Generate content
-    # Generate content
-    try:
-        content = await generate_deep_dive(
-            topic=page.title,
-            wiki=page.summary,
-            github=git_data,
-            official=off_data,
-            wiki_url=page.url,
-            git_url=git_url,
-            off_url=off_url,
-            category=category,
-        )
-    except Exception as e:
-        print(f"❌ AI Generation Error: {e}")
-        content = None
-
-    if content:
-        # ... (your existing database save logic) ...
-        print(f"🏆 SUCCESS: {page.title} published.")
-        update_job_status(kw_id, "completed")  # Mark as finished
-    else:
-        print(f"⏭️ Job '{phrase}' was skipped or failed.")
-        update_job_status(kw_id, "skipped")  # Prevent re-processing bad keywords
-
-    # Save content in the database
-    # Tier 3: Default behavior is to set status `noindex`
-    noindex_flag = "noindex" if tier == 3 else "published"
-# ... after generate_deep_dive() call ...
-
-   # --- Inside your main() function, where you prepare data for the INSERT ---
-
-    if content:
-        slug = create_slug(page.title)
+    for kw_id, phrase in jobs:
+        print(f"\n🚀 Starting Job: {phrase}")
         
-        # 1. Define styles based on your 5 core niches
-        style_map = {
-            "Smartphones": "sleek_minimalist_smartphone_product_photography_8k",
-            "Laptops": "high_end_laptop_on_wooden_desk_cinematic_lighting",
-            "Audio": "professional_headphones_close_up_depth_of_field",
-            "Wearables": "smartwatch_on_wrist_modern_active_lifestyle",
-            "Smart Home Devices": "modern_minimalist_living_room_with_smart_tech"
-        }
-        
-        # 2. Get the style or use a high-tech default
-        style = style_map.get(category, "cutting_edge_technology_product_shot")
-        
-        # 3. Generate the actual URL
-        image_url = f"https://image.pollinations.ai/prompt/{style}_{slug}?width=1280&height=720&nologo=true"
-
-        # 4. Save to Database with Error Handling
         try:
-            conn = sqlite3.connect(DB_PATH)
-            conn.execute(
-                """INSERT INTO articles (title, content, slug, image_url, category, source_url, word_count, status) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (page.title, content, slug, image_url, category, page.url, len(content.split()), noindex_flag),
-            )
-            conn.commit()
-            conn.close()
-            
-            print(f"🏆 SUCCESS: {page.title} published.")
-            update_job_status(kw_id, "completed")
-            
-        except Exception as e:
-            print(f"❌ Database Save Error: {e}")
-            update_job_status(kw_id, "failed")
-    else:
-        # Handles broad-topic skips or AI generation failures
-        print(f"⏭️ Job '{phrase}' was skipped or failed to generate.")
-        update_job_status(kw_id, "skipped")
+            page = smart_wiki_search(phrase)
+            if not page:
+                update_job_status(kw_id, "failed")
+                continue
 
+            # 🟢 DUPLICATE CHECK
+            if article_exists(page.title):
+                print(f"✅ Already exists: {page.title}. Skipping.")
+                update_job_status(kw_id, "completed")
+                continue
+
+            tier = get_tier(phrase)
+            category = categorize(phrase)
+            off_url = find_links_on_wiki(page)
+            off_data = scrape_official_site(off_url)
+            
+            content = await generate_deep_dive(page.title, page.summary, off_data, category, tier)
+
+            if content:
+                slug = create_slug(page.title)
+                
+                # --- HYBRID IMAGE ENGINE ---
+                image_url = get_wikipedia_image_pro(page.title)
+                if not image_url:
+                    print("🎨 Fallback to AI Image...")
+                    style = {"Smartphones": "sleek_product", "Laptops": "pro_laptop"}.get(category, "tech_gadget")
+                    image_url = f"https://image.pollinations.ai/prompt/{style}_{slug}?width=1280&height=720&nologo=true"
+                else:
+                    print("📸 Valid Wiki Image Found!")
+
+                status_flag = "noindex" if tier == 3 else "published"
+
+                try:
+                    conn = sqlite3.connect(DB_PATH)
+                    conn.execute(
+                        """INSERT INTO articles (title, content, slug, image_url, category, tier, source_url, word_count, status) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (page.title, content, slug, image_url, category, tier, page.url, len(content.split()), status_flag)
+                    )
+                    conn.commit()
+                    conn.close()
+                    print(f"🏆 SUCCESS: {page.title}")
+                    update_job_status(kw_id, "completed")
+                except Exception as e:
+                    print(f"❌ DB Error: {e}")
+                    update_job_status(kw_id, "failed")
+            else:
+                update_job_status(kw_id, "failed")
+
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            update_job_status(kw_id, "failed")
 
 if __name__ == "__main__":
     asyncio.run(main())
