@@ -1,39 +1,75 @@
 ---
 // src/layouts/BaseLayout.astro
+import Header from '../components/Header.astro';
+
 const { 
   title, 
   description, 
   image, 
   slug, 
-  type = "article",
-  noindex = false // Use a simple boolean instead of the whole post object
+  noindex = false 
 } = Astro.props;
 
-const siteName = "KnowNow Technical Pulse"; 
-const domain = "https://yashawanthbg2001.github.io/knownow"; 
-const canonicalURL = new URL(slug ? `/article/${slug}/` : '', domain).href; 
-const defaultDescription = "Explore KnowNow's insights and discover the latest 2026 tech trends."; 
-const defaultImage = `${domain}/default-og.png`; 
-
-const robotsContent = noindex ? "noindex" : "index, follow";
+const siteName = "KnowNow Technical Pulse";
+const domain = "https://yashawanthbg2001.github.io/knownow";
+const canonicalURL = new URL(slug ? `/article/${slug}/` : '', domain).href;
+const defaultImage = `${domain}/default-og.png`;
 ---
 
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    
     <title>{title ? `${title} | ${siteName}` : siteName}</title>
-    <meta name="description" content={description || defaultDescription} />
-    <meta name="robots" content={robotsContent} />
-    
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalURL} />
+    <meta name="robots" content={noindex ? "noindex, nofollow" : "index, follow"} />
+
     <meta property="og:title" content={title || siteName} />
+    <meta property="og:description" content={description} />
     <meta property="og:image" content={image || defaultImage} />
-    
-    <slot name="head" /> <style is:global>
-      body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; line-height: 1.6; color: #111; background: #fff; }
-    </style>
+    <meta property="og:url" content={canonicalURL} />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+
+    <slot name="head" />
   </head>
   <body>
-    <slot />
+    <Header />
+    
+    <main>
+      <slot /> </main>
+
+    <footer class="site-footer">
+      <div class="footer-content">
+        <p>&copy; 2026 KnowNow Technical Research Lab. All rights reserved.</p>
+      </div>
+    </footer>
+
+    <style is:global>
+      :root { --primary: #0070f3; --text: #111; --grey: #666; }
+      * { box-sizing: border-box; }
+      body { 
+        font-family: 'Inter', sans-serif; 
+        margin: 0; 
+        color: var(--text); 
+        background-color: #ffffff;
+        -webkit-font-smoothing: antialiased;
+      }
+      .site-footer {
+        border-top: 1px solid #eee;
+        padding: 4rem 0;
+        margin-top: 5rem;
+        text-align: center;
+        color: var(--grey);
+        font-size: 0.9rem;
+      }
+    </style>
   </body>
 </html>

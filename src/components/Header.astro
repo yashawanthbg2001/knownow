@@ -1,85 +1,81 @@
 ---
-import Database from 'better-sqlite3';
-import path from 'path';
-import BaseLayout from '../layouts/BaseLayout.astro';
-import Header from '../components/Header.astro';
-
-const dbPath = path.resolve('content.db');
-const db = new Database(dbPath);
-
-const ITEMS_PER_PAGE = 12;
-const currentPage = parseInt(Astro.url.searchParams.get('page')) || 1;
-const offset = (currentPage - 1) * ITEMS_PER_PAGE;
-
-let articles = [];
-let totalArticles = 0;
-
-try {
-  articles = db.prepare(`SELECT * FROM articles ORDER BY id DESC LIMIT ? OFFSET ?`).all(ITEMS_PER_PAGE, offset);
-  totalArticles = db.prepare("SELECT COUNT(*) AS count FROM articles").get().count;
-} catch (e) {
-  console.error("❌ Database Fetch Error:", e);
-} finally {
-  db.close();
-}
-
-const totalPages = Math.ceil(totalArticles / ITEMS_PER_PAGE) || 1;
+// src/components/Header.astro
+const navLinks = [
+  { name: 'Latest Pulse', href: '/knownow/' },
+  { name: 'Hardware', href: '/knownow/?cat=Hardware' },
+  { name: 'AI Systems', href: '/knownow/?cat=AI' },
+];
 ---
-
-<BaseLayout title="Technical Pulse 2026">
-  <Header />
-  <main class="container">
-    <section class="hero-section">
-      <span class="eyebrow">The Future, Verified.</span>
-      <h1>Technical Pulse</h1>
-      <p>Deciphering hardware breakthroughs and AI innovations with multi-source verified reviews.</p>
-    </section>
-
-    <div class="grid">
-      {articles.map((post, index) => (
-        <a href={`/knownow/article/${post.slug}/`} class="card">
-          <div class="img-box">
-            <img 
-              src={post.image_url || '/placeholder.png'} 
-              alt={post.title} 
-              loading={index < 3 ? "eager" : "lazy"} 
-            />
-            <span class="category-tag">{post.category}</span>
-          </div>
-          <div class="card-content">
-            <h2>{post.title}</h2>
-            <div class="card-footer">
-              <span class="read-more">Full Analysis</span>
-              <span class="date">{new Date(post.created_at).toLocaleDateString()}</span>
-            </div>
-          </div>
-        </a>
+<header class="site-header">
+  <div class="header-container">
+    <a href="/knownow/" class="logo">Know<span>Now</span></a>
+    <nav>
+      {navLinks.map(link => (
+        <a href={link.href} class="nav-link">{link.name}</a>
       ))}
+    </nav>
+    <div class="live-status">
+      <span class="pulse-dot"></span> 2026 LIVE FEED
     </div>
-
-    </main>
-</BaseLayout>
+  </div>
+</header>
 
 <style>
-  .container { max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem; }
-  .hero-section { text-align: center; margin-bottom: 6rem; }
-  .eyebrow { color: #0070f3; font-weight: 800; text-transform: uppercase; letter-spacing: 0.15em; font-size: 0.8rem; }
-  h1 { font-size: clamp(3rem, 10vw, 5rem); font-weight: 900; letter-spacing: -0.05em; margin: 1rem 0; }
-  
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 2.5rem; }
-  .card { 
-    background: #fff; border-radius: 28px; border: 1px solid #efefef; text-decoration: none; color: inherit;
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  .site-header {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid #eaeaea;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    padding: 1.2rem 0;
   }
-  .card:hover { transform: translateY(-10px); box-shadow: 0 30px 60px rgba(0,0,0,0.1); border-color: #0070f3; }
-  
-  .img-box { position: relative; aspect-ratio: 16/10; overflow: hidden; border-radius: 28px 28px 0 0; }
-  .img-box img { width: 100%; height: 100%; object-fit: cover; }
-  .category-tag { position: absolute; top: 1rem; left: 1rem; background: white; padding: 0.4rem 1rem; border-radius: 50px; font-weight: 800; font-size: 0.7rem; color: #0070f3; }
-
-  .card-content { padding: 2rem; }
-  h2 { font-size: 1.5rem; line-height: 1.2; margin-bottom: 1.5rem; font-weight: 800; }
-  .card-footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #eee; padding-top: 1.5rem; }
-  .read-more { font-weight: 700; color: #0070f3; font-size: 0.9rem; }
-  .date { color: #999; font-size: 0.8rem; }
+  .header-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .logo {
+    font-size: 1.6rem;
+    font-weight: 900;
+    text-decoration: none;
+    color: #111;
+    letter-spacing: -0.04em;
+  }
+  .logo span { color: #0070f3; }
+  nav { display: flex; gap: 2rem; }
+  .nav-link {
+    text-decoration: none;
+    color: #666;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: color 0.2s;
+  }
+  .nav-link:hover { color: #0070f3; }
+  .live-status {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: #10b981;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid #d1fae5;
+    padding: 5px 12px;
+    border-radius: 50px;
+  }
+  .pulse-dot {
+    width: 7px;
+    height: 7px;
+    background: #10b981;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  }
 </style>
