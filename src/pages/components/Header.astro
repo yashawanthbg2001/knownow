@@ -1,0 +1,85 @@
+---
+import Database from 'better-sqlite3';
+import path from 'path';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Header from '../components/Header.astro';
+
+const dbPath = path.resolve('content.db');
+const db = new Database(dbPath);
+
+const ITEMS_PER_PAGE = 12;
+const currentPage = parseInt(Astro.url.searchParams.get('page')) || 1;
+const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+
+let articles = [];
+let totalArticles = 0;
+
+try {
+  articles = db.prepare(`SELECT * FROM articles ORDER BY id DESC LIMIT ? OFFSET ?`).all(ITEMS_PER_PAGE, offset);
+  totalArticles = db.prepare("SELECT COUNT(*) AS count FROM articles").get().count;
+} catch (e) {
+  console.error("❌ Database Fetch Error:", e);
+} finally {
+  db.close();
+}
+
+const totalPages = Math.ceil(totalArticles / ITEMS_PER_PAGE) || 1;
+---
+
+<BaseLayout title="Technical Pulse 2026">
+  <Header />
+  <main class="container">
+    <section class="hero-section">
+      <span class="eyebrow">The Future, Verified.</span>
+      <h1>Technical Pulse</h1>
+      <p>Deciphering hardware breakthroughs and AI innovations with multi-source verified reviews.</p>
+    </section>
+
+    <div class="grid">
+      {articles.map((post, index) => (
+        <a href={`/knownow/article/${post.slug}/`} class="card">
+          <div class="img-box">
+            <img 
+              src={post.image_url || '/placeholder.png'} 
+              alt={post.title} 
+              loading={index < 3 ? "eager" : "lazy"} 
+            />
+            <span class="category-tag">{post.category}</span>
+          </div>
+          <div class="card-content">
+            <h2>{post.title}</h2>
+            <div class="card-footer">
+              <span class="read-more">Full Analysis</span>
+              <span class="date">{new Date(post.created_at).toLocaleDateString()}</span>
+            </div>
+          </div>
+        </a>
+      ))}
+    </div>
+
+    </main>
+</BaseLayout>
+
+<style>
+  .container { max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem; }
+  .hero-section { text-align: center; margin-bottom: 6rem; }
+  .eyebrow { color: #0070f3; font-weight: 800; text-transform: uppercase; letter-spacing: 0.15em; font-size: 0.8rem; }
+  h1 { font-size: clamp(3rem, 10vw, 5rem); font-weight: 900; letter-spacing: -0.05em; margin: 1rem 0; }
+  
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 2.5rem; }
+  .card { 
+    background: #fff; border-radius: 28px; border: 1px solid #efefef; text-decoration: none; color: inherit;
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .card:hover { transform: translateY(-10px); box-shadow: 0 30px 60px rgba(0,0,0,0.1); border-color: #0070f3; }
+  
+  .img-box { position: relative; aspect-ratio: 16/10; overflow: hidden; border-radius: 28px 28px 0 0; }
+  .img-box img { width: 100%; height: 100%; object-fit: cover; }
+  .category-tag { position: absolute; top: 1rem; left: 1rem; background: white; padding: 0.4rem 1rem; border-radius: 50px; font-weight: 800; font-size: 0.7rem; color: #0070f3; }
+
+  .card-content { padding: 2rem; }
+  h2 { font-size: 1.5rem; line-height: 1.2; margin-bottom: 1.5rem; font-weight: 800; }
+  .card-footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #eee; padding-top: 1.5rem; }
+  .read-more { font-weight: 700; color: #0070f3; font-size: 0.9rem; }
+  .date { color: #999; font-size: 0.8rem; }
+</style>
