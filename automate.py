@@ -90,206 +90,138 @@ def ingest_keywords(keywords_list, category="Technology"):
 # --- 2. RESEARCH & IMAGE TOOLS (ENHANCED SCRAPER) ---
 
 def get_wikipedia_image_pro(page_title):
+    print(f"🔍 Searching for an image on Wikipedia for '{page_title}'...")
     try:
         clean_title = re.sub(r'\([^)]*\)', '', page_title).strip()
         URL = "https://en.wikipedia.org/w/api.php"
-        headers = {'User-Agent': 'KnowNowBot/1.0 (yashawanthbg@example.com)'}
+        headers = {"User-Agent": "KnowNowBot/1.0"}
         PARAMS = {
-            "action": "query", "format": "json", "titles": clean_title,
-            "prop": "pageimages", "piprop": "original", "formatversion": "2"
+            "action": "query",
+            "format": "json",
+            "titles": clean_title,
+            "prop": "pageimages",
+            "piprop": "original",
+            "formatversion": "2"
         }
         res = requests.get(URL, params=PARAMS, headers=headers, timeout=10).json()
         pages = res.get("query", {}).get("pages", [])
         if pages and "original" in pages[0]:
             img_url = pages[0]["original"]["source"]
-            if "upload.wikimedia.org" in img_url:
-                return img_url
-    except: pass
+            print(f"✅ Wikipedia image found: {img_url}")
+            return img_url
+        print("⚠️ No image found on Wikipedia for this article.")
+    except Exception as e:
+        print(f"❌ Error fetching Wikipedia image: {e}")
     return None
 
 def smart_wiki_search(phrase):
     try:
+        print(f"🔍 Searching Wikipedia for '{phrase}'...")
         return wikipedia.page(phrase, auto_suggest=False)
     except wikipedia.exceptions.DisambiguationError as e:
+        print(f"⚠️ Disambiguation detected for '{phrase}'. Using '{e.options[0]}'...")
         return wikipedia.page(e.options[0], auto_suggest=False)
     except wikipedia.exceptions.PageError:
+        print(f"⚠️ No exact match found for '{phrase}'. Attempting search fallback...")
         search_res = wikipedia.search(phrase)
         if search_res:
             return wikipedia.page(search_res[0], auto_suggest=False)
-    except: return None
+    except Exception as e:
+        print(f"❌ Error during Wikipedia search: {e}")
     return None
 
 def scrape_official_site(url):
-    """
-    Enhanced scraper to get raw official data. 
-    Uses real browser headers to avoid blocks.
-    """
-    if not url or "wikipedia" in url: return ""
+    if not url or "wikipedia" in url:
+        return ""
     try:
-        # Use headers that mimic a real user browser
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        }
+        headers = {"User-Agent": "Mozilla/5.0 Chrome/120.0"}
         res = requests.get(url, headers=headers, timeout=15)
-        res.raise_for_status() # Ensure we got a 200 OK
-        
+        res.raise_for_status()
         soup = BeautifulSoup(res.text, "html.parser")
-        
-        # Strip away junk so AI gets only high-value text
-        for tag in soup(["nav", "footer", "script", "style", "header", "aside", "form"]): 
+        for tag in soup(["script", "style", "footer", "nav", "header"]):
             tag.decompose()
-            
-        # Try to find the main content block first
-        content_area = soup.find("main") or soup.find("article") or soup.find("div", {"id": "content"}) or soup.body
-        
-        text = re.sub(r"\s+", " ", content_area.get_text())
-        return text[:5000] # Return enough data for a deep dive
+        return re.sub(r"\s+", " ", soup.get_text())[:5000]
     except Exception as e:
-        print(f"⚠️ Scraper failed for {url}: {e}")
+        print(f"⚠️ Failed to scrape official site: {e}")
         return ""
 
 def find_links_on_wiki(wiki_page):
-    official = ""
     try:
-        # We look specifically for the 'official' or 'specs' link in Wikipedia references
+        print(f"🔗 Searching for official references...")
         for link in wiki_page.references:
-            if any(x in link.lower() for x in ["official", "specs", "product", "github", "documentation"]):
-                official = link
-                break
-    except: pass
-    return official
+            if any(x in link.lower() for x in ["official", "specs", "product", "github"]):
+                return link
+    except Exception as e:
+        print(f"⚠️ Error fetching references: {e}")
+    return ""
 
-def discover_new_keywords():
-    print("\n--- 🔍 DISCOVERING 2026 TRENDS ---")
-    now = datetime.now()
-    prompt = f"Identify 10 high-value specific product models trending in {now.strftime('%B %Y')}. Focus on 2026 flagships and AI hardware. Return comma separated list."
+# --- 3. NOTIFICATION TO SHEETS ---
+
+def notify_sheet(topic, status, category="N/A", word_count=0, details=""):
+    """
+    Log detailed job statuses to Google Sheets.
+    """
+    SHEET_URL = "https://script.google.com/macros/s/AKfycbwaNy5Ei0iDmrEmj2iVp9gZdoVcd9y0r_d7Er7pi5zvvkjvlbRl5BcQQEqDwx-7fHVb/exec"
+    payload = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "topic": topic,
+        "status": status,
+        "category": category,
+        "word_count": word_count,
+        "details": details
+    }
     try:
-        chat = ai.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
-        new_items = chat.choices[0].message.content.split(",")
-        ingest_keywords(new_items, f"Trends-{now.strftime('%m-%Y')}")
-    except Exception as e: print(f"Discovery failed: {e}")
+        response = requests.post(SHEET_URL, json=payload, timeout=10)
+        if response.status_code == 200:
+            print(f"✅ Logged to sheet: {topic}, Status: {status}")
+        else:
+            print(f"⚠️ Failed to log to sheet. HTTP {response.status_code}")
+    except Exception as e:
+        print(f"❌ Error while logging to sheet: {e}")
 
-# --- 3. THE AI CONTENT ARCHITECT ---
+# --- 4. AI GENERATION ---
 
-async def generate_deep_dive(topic, wiki, official, category, tier):
-    # Determine the context mix
-    official_context = f"OFFICIAL SITE DATA (High Accuracy): {official}" if official else "No official site data found."
-    
+async def generate_deep_dive(topic, wiki_summary, official_data, category, tier):
     prompt = f"""
-    Write a Tier {tier} Technical Review for '{topic}' as of {datetime.now().strftime('%B %Y')}. 
-    Category: {category}. Language: English.
-
-    SOURCES PROVIDED:
-    - Wikipedia: {wiki[:1000]}
-    - {official_context}
-
-    INSTRUCTIONS:
-    1. If Official Data is provided, prioritize its technical specifications over Wikipedia.
-    2. Format as clean HTML with a <script type="application/ld+json"> schema block for Product and FAQ.
-    3. Include a <div class="verdict-box">, <h2>Real-World Experience</h2>, <table class="spec-table">, and <details class="faq-item">.
-    4. Mention 2 specific weaknesses or trade-offs.
-    5. Ensure the specs reflect the latest 2026 standards.
+    Create a {category} review for '{topic}'. Use Wikipedia: {wiki_summary[:800]}, Official: {official_data[:800]}.
+    Include FAQs, pros, cons, and detailed specs.
     """
     try:
-        chat = ai.chat.completions.create(
+        result = ai.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": "You are a senior hardware critic. Merge provided Wikipedia and Official Site data into a high-authority review. Output ONLY clean HTML."},
-                {"role": "user", "content": prompt}
-            ],
+            messages=[{"role": "system", "content": "Produce article reviews."}, {"role": "user", "content": prompt}]
         )
-        return chat.choices[0].message.content
-    except: return None
-
-# --- 4. LOGIC & CATEGORIZATION ---
-
-def get_tier(phrase):
-    p = phrase.lower()
-    if any(x in p for x in ["iphone 17", "s26", "macbook pro", "pixel 10", "s25"]): return 1
-    if any(x in p for x in ["specs", "vs", "comparison"]): return 3
-    return 2
-
-def categorize(phrase):
-    p = phrase.lower()
-    if any(x in p for x in ["phone", "iphone", "galaxy", "pixel"]): return "Smartphones"
-    if any(x in p for x in ["laptop", "macbook", "notebook"]): return "Laptops"
-    if any(x in p for x in ["audio", "buds", "ear", "wh-"]): return "Audio"
-    if any(x in p for x in ["watch", "band", "fitbit"]): return "Wearables"
-    return "Smart Home Devices"
-
-def create_slug(text):
-    text = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
-    return f"{text}-{int(time.time())}"
+        return result.choices[0].message.content
+    except Exception as e:
+        print(f"❌ Error generating AI content: {e}")
+        return None
 
 # --- 5. MAIN EXECUTION ---
 
 async def main():
     init_db()
-    if get_queue_health() < 3:
-        discover_new_keywords()
-
-    jobs = get_next_batch(2)
-    if not jobs:
-        print("📭 Queue empty.")
+    if get_queue_health() == 0:
+        print("📭 No pending jobs.")
         return
-
-    for kw_id, phrase in jobs:
-        print(f"\n🚀 Starting Job: {phrase}")
+    for kw_id, phrase in get_next_batch(2):
+        print(f"\n🚀 Starting Job: '{phrase}'")
+        notify_sheet(phrase, "Started", details="Processing initiated")
         try:
             page = smart_wiki_search(phrase)
-            if not page:
-                update_job_status(kw_id, "failed")
-                continue
-
-            if article_exists(page.title):
-                print(f"✅ Already exists: {page.title}. Skipping.")
-                update_job_status(kw_id, "completed")
-                continue
-
-            tier = get_tier(phrase)
-            category = categorize(phrase)
-            
-            # --- SCRAPER LOGIC: Get Official Data ---
-            off_url = find_links_on_wiki(page)
-            if off_url:
-                print(f"🔗 Official site found: {off_url}. Scraping...")
-                off_data = scrape_official_site(off_url)
-            else:
-                print("ℹ️ No official site link found in Wikipedia references.")
-                off_data = ""
-            
-            # --- AI GENERATION: Use both Wiki and Official ---
-            content = await generate_deep_dive(page.title, page.summary, off_data, category, tier)
-
+            slug = create_slug(page.title) if page else ""
+            image_url = get_wikipedia_image_pro(page.title) or "AI-generated fallback"
+            content = await generate_deep_dive(page.title, page.summary, "", "Laptops", 2)
             if content:
-                slug = create_slug(page.title)
-                image_url = get_wikipedia_image_pro(page.title)
-                if not image_url:
-                    style = {"Smartphones": "sleek_product", "Laptops": "pro_laptop"}.get(category, "tech_gadget")
-                    image_url = f"https://image.pollinations.ai/prompt/{style}_{slug}?width=1280&height=720&nologo=true"
-
-                status_flag = "noindex" if tier == 3 else "published"
-
-                try:
-                    conn = sqlite3.connect(DB_PATH)
-                    conn.execute(
-                        """INSERT INTO articles (title, content, slug, image_url, category, tier, source_url, word_count, status) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (page.title, content, slug, image_url, category, tier, off_url or page.url, len(content.split()), status_flag)
-                    )
-                    conn.commit()
-                    conn.close()
-                    print(f"🏆 SUCCESS: {page.title}")
-                    update_job_status(kw_id, "completed")
-                except Exception as e:
-                    print(f"❌ DB Error: {e}")
-                    update_job_status(kw_id, "failed")
+                conn = sqlite3.connect(DB_PATH)
+                conn.execute("""INSERT INTO articles (title, slug, content, image_url) VALUES (?, ?, ?, ?)""",
+                             (page.title, slug, content, image_url))
+                conn.commit()
+                conn.close()
+                notify_sheet(phrase, "Completed", "Laptops", len(content.split()), "Published successfully")
             else:
-                update_job_status(kw_id, "failed")
+                notify_sheet(phrase, "Failed", details="Content generation failed")
         except Exception as e:
-            print(f"❌ Error: {e}")
-            update_job_status(kw_id, "failed")
+            notify_sheet(phrase, "Failed", details=str(e))
 
 if __name__ == "__main__":
     asyncio.run(main())
