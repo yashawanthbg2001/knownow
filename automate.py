@@ -6,44 +6,76 @@ import sqlite3
 import asyncio
 import re
 import hashlib
+import json
 from bs4 import BeautifulSoup
 from groq import Groq
 from datetime import datetime
 
 # --- CONFIGURATION ---
 DB_PATH = "content.db"
-# Use the key provided for your current session
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# SECURITY: These keys must be set in your Environment Variables for GitHub Actions
+GROQ_API_KEY = "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"
 GH_TOKEN = os.getenv("GH_TOKEN")
 REPO_OWNER = "yashawanthbg2001"
 REPO_NAME = "knownow"
 
+# Deployment Target: Your latest Google Sheet Webhook URL
+SHEET_URL = "https://script.google.com/macros/s/AKfycbwKiSlkcilabPXx87eZp6ZQN3qRK1uk_ZUEcDT_gdyR5Wo5txO5jGrpFSs0qCzcCU09/exec"
+
 ai = Groq(api_key=GROQ_API_KEY)
 
-# --- 1. DATABASE & QUEUE HELPERS ---
+# --- 1. SINGLE-ROW JOB LOGGER ---
+
+class JobLogger:
+    """Buffers technical steps for a gadget and sends a single professional row to Google Sheets."""
+    def __init__(self, topic):
+        self.topic = topic
+        self.start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.steps = {
+            "Wiki_Source": "⏳ Pending",
+            "Image_Status": "⏳ Pending",
+            "Official_Scrape": "⏳ Pending",
+            "AI_Generation": "⏳ Pending",
+            "Final_Status": "Processing",
+            "Details": ""
+        }
+
+    def update(self, key, status, detail=""):
+        self.steps[key] = status
+        if detail:
+            # Buffer details to explain any errors or successes
+            self.steps["Details"] = f"{self.steps['Details']} | {detail}".strip(" |")
+
+    def send_to_sheet(self):
+        payload = {
+            "timestamp": self.start_time,
+            "topic": self.topic,
+            "wiki_source": self.steps["Wiki_Source"],
+            "image_status": self.steps["Image_Status"],
+            "official_scrape": self.steps["Official_Scrape"],
+            "ai_generation": self.steps["AI_Generation"],
+            "final_status": self.steps["Final_Status"],
+            "details": self.steps["Details"]
+        }
+        try:
+            requests.post(SHEET_URL, json=payload, timeout=12)
+        except Exception as e:
+            print(f"⚠️ Sheet Link Error for {self.topic}: {e}")
+
+# --- 2. DATABASE & INFRASTRUCTURE ---
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    # Ensure keywords table has category
     cursor.execute("""CREATE TABLE IF NOT EXISTS keywords (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        phrase TEXT UNIQUE,
-        category TEXT,
-        status TEXT DEFAULT 'pending',
-        priority INTEGER DEFAULT 1,
-        last_attempt DATETIME
+        id INTEGER PRIMARY KEY AUTOINCREMENT, phrase TEXT UNIQUE, category TEXT,
+        status TEXT DEFAULT 'pending', priority INTEGER DEFAULT 1, last_attempt DATETIME
     )""")
     cursor.execute("""CREATE TABLE IF NOT EXISTS articles (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT UNIQUE,
-        content TEXT,
-        slug TEXT UNIQUE,
-        image_url TEXT,
-        category TEXT,
-        tier INTEGER DEFAULT 2,
-        status TEXT DEFAULT 'published',
-        source_url TEXT,
-        word_count INTEGER,
+        id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT UNIQUE, content TEXT,
+        slug TEXT UNIQUE, image_url TEXT, category TEXT, tier INTEGER DEFAULT 2,
+        status TEXT DEFAULT 'published', source_url TEXT, word_count INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )""")
     conn.commit()
@@ -55,7 +87,7 @@ def get_queue_health():
     conn.close()
     return count
 
-def get_next_batch(size=2):
+def get_next_batch(size=3):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT id, phrase FROM keywords WHERE status = 'pending' ORDER BY priority DESC, id ASC LIMIT ?", (size,))
@@ -78,198 +110,177 @@ def article_exists(title):
 def ingest_keywords(keywords_list, category="Technology"):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    added = 0
     for phrase in keywords_list:
-        parts = re.split(r" and |,|/|\+", phrase)
-        for p in parts:
-            clean_p = p.strip()
-            if clean_p:
+        clean_p = phrase.strip()
+        # Filter out AI chatter or overly short phrases
+        if clean_p and 3 < len(clean_p) < 65 and "not able" not in clean_p.lower():
+            try:
                 cursor.execute("INSERT OR IGNORE INTO keywords (phrase, category) VALUES (?, ?)", (clean_p, category))
+                if cursor.rowcount > 0: added += 1
+            except: pass
     conn.commit()
     conn.close()
+    print(f"📥 Queue: Ingested {added} unique keywords.")
 
-# --- 2. MULTI-SOURCE SCRAPING & ACCURACY TOOLS ---
+# --- 3. ADVANCED MULTI-SOURCE RESEARCH ---
 
 def create_unique_slug(title):
-    """Generates a human-like slug using partial MD5 for SEO uniqueness."""
     base_slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
     hash_suffix = hashlib.md5(title.encode()).hexdigest()[:5]
     return f"{base_slug}-{hash_suffix}"
 
-def validate_tech_data(content, source_text):
-    """Ensures AI didn't hallucinate numbers by checking them against raw source text."""
-    source_numbers = set(re.findall(r'\d+', source_text))
-    content_numbers = set(re.findall(r'\d+', content))
-    if not content_numbers or len(content_numbers.intersection(source_numbers)) < 2:
-        return False
-    return True
-
-def get_wikipedia_image_pro(page_title):
+def get_wikipedia_image_strict(page_title):
     try:
         clean_title = re.sub(r'\([^)]*\)', '', page_title).strip()
         URL = "https://en.wikipedia.org/w/api.php"
-        headers = {"User-Agent": "KnowNowBot/1.0 (yashawanthbg@example.com)"}
-        PARAMS = {
-            "action": "query", "format": "json", "titles": clean_title,
-            "prop": "pageimages", "piprop": "original", "formatversion": "2"
-        }
-        res = requests.get(URL, params=PARAMS, headers=headers, timeout=10).json()
+        headers = {"User-Agent": "KnowNowBot/1.0"}
+        params = {"action": "query", "format": "json", "titles": clean_title, "prop": "pageimages", "piprop": "original", "formatversion": "2"}
+        res = requests.get(URL, params=params, headers=headers, timeout=10).json()
         pages = res.get("query", {}).get("pages", [])
         if pages and "original" in pages[0]:
             img_url = pages[0]["original"]["source"]
-            if "upload.wikimedia.org" in img_url:
-                return img_url
+            if "upload.wikimedia.org" in img_url: return img_url
     except: pass
     return None
 
-def smart_wiki_search(phrase):
-    try:
-        return wikipedia.page(phrase, auto_suggest=False)
-    except wikipedia.exceptions.DisambiguationError as e:
-        return wikipedia.page(e.options[0], auto_suggest=False)
-    except:
-        search_res = wikipedia.search(phrase)
-        if search_res:
-            return wikipedia.page(search_res[0], auto_suggest=False)
-    return None
-
-def scrape_official_site(url):
-    """Deep scrapes secondary sources found in Wikipedia references."""
-    if not url or "wikipedia" in url: return ""
-    try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0.0.0"}
-        res = requests.get(url, headers=headers, timeout=12)
-        if res.status_code != 200: return ""
-        soup = BeautifulSoup(res.text, "html.parser")
-        for tag in soup(["script", "style", "footer", "nav", "header", "aside"]): tag.decompose()
-        main_body = soup.find("main") or soup.find("article") or soup.body
-        text = re.sub(r"\s+", " ", main_body.get_text())
-        return text[:4000]
-    except: return ""
-
-def find_research_links(wiki_page):
-    """Identifies potential official links for deeper scraping."""
-    links = {"official": "", "github": ""}
+def find_deep_links(wiki_page):
+    """Finds top 3 technical/official links, filtering out social media clutter."""
+    found = []
+    noise = ["facebook", "twitter", "instagram", "youtube", "amazon", "linkedin"]
     try:
         for link in wiki_page.references:
-            if "github.com" in link: links["github"] = link
-            elif any(x in link.lower() for x in ["official", "specs", "manual", "product"]):
-                links["official"] = link
-                break
+            if not any(x in link.lower() for x in noise):
+                found.append(link)
+            if len(found) >= 3: break
     except: pass
-    return links
+    return found
 
-# --- 3. TREND DISCOVERY & NOTIFICATION ---
+def scrape_url_technical(url):
+    """Aggressively scrapes raw text data from tech documentation."""
+    if not url or "wikipedia" in url: return ""
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        res = requests.get(url, headers=headers, timeout=15)
+        if res.status_code != 200: return ""
+        soup = BeautifulSoup(res.text, "html.parser")
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside"]): tag.decompose()
+        main_content = soup.find("main") or soup.find("article") or soup.body
+        return re.sub(r"\s+", " ", main_content.get_text())[:3500]
+    except: return ""
+
+# --- 4. TREND DISCOVERY ---
 
 def discover_new_keywords():
     print("\n--- 🔍 DISCOVERING 2026 TRENDS ---")
     now = datetime.now()
-    prompt = f"Identify 10 specific trending product models (Samsung S26, Pixel 10, etc.) for {now.strftime('%B %Y')}. Return names separated by commas."
+    prompt = "List 10 specific hardware models or tech products released or trending in January 2026. Return ONLY comma-separated names."
     try:
         completion = ai.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "system", "content": "You are a 2026 tech analyst. Return only comma-separated product names."},
+                      {"role": "user", "content": prompt}]
         )
-        new_items = completion.choices[0].message.content.split(",")
-        ingest_keywords(new_items, f"Trends-{now.strftime('%m-%Y')}")
-        print(f"✅ Added {len(new_items)} new products to the queue.")
+        ingest_keywords(completion.choices[0].message.content.split(","), f"Trends-{now.strftime('%m-%Y')}")
     except: print("❌ Discovery failed.")
 
-def notify_sheet(topic, status, category="N/A", word_count=0, details=""):
-    SHEET_URL = "https://script.google.com/macros/s/AKfycbwaNy5Ei0iDmrEmj2iVp9gZdoVcd9y0r_d7Er7pi5zvvkjvlbRl5BcQQEqDwx-7fHVb/exec"
-    payload = {"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "topic": topic, "status": status, "category": category, "word_count": word_count, "details": details}
-    try: requests.post(SHEET_URL, json=payload, timeout=8)
-    except: pass
+# --- 5. AI CONTENT ARCHITECT ---
 
-# --- 4. AI CONTENT ARCHITECT (MULTI-SOURCE) ---
-
-async def generate_deep_dive(topic, wiki_text, official_text, github_text):
-    """Synthesizes all scraped data into a verified review."""
+async def generate_authority_article(topic, wiki, aggregated_data):
+    """Synthesizes multiple sources into a professional technical review."""
     prompt = f"""
-    Write a 2026 Technical Review for '{topic}'.
-    WIKI DATA: {wiki_text[:1000]}
-    OFFICIAL DATA: {official_text[:1000]}
-    GITHUB DATA: {github_text[:500]}
-
-    REQUIRED HTML:
-    1. <div class="verdict-box"><h2>Verdict</h2>2026 Buy/Avoid logic</div>
-    2. <h2>Real-World Performance</h2>Synthetic vs Real usage.
-    3. <table class="spec-table">Technical Specs</table>
-    4. <details class="faq-item"><summary>FAQ</summary>Answer</details>
-
-    RULES:
-    - Prioritize OFFICIAL DATA over WIKI DATA if they conflict.
-    - Mention 2 honest negatives.
-    - No generic AI definitions.
+    Write a 1200-word Technical Review for '{topic}' as of 2026.
+    PRIMARY SOURCE (Wiki): {wiki[:1000]}
+    EXTERNAL DATA WALL: {aggregated_data[:4000]}
+    
+    REQUIRED HTML STRUCTURE:
+    - <div class="verdict-box"><h2>Verdict</h2>Expert analysis</div>
+    - <h2>Technical Architecture</h2>Silicon, Build, Engineering paragraphs.
+    - <table class="spec-table">Technical specs</table>
+    - <h2>Frequently Asked Questions</h2>Static divs (no accordions).
+    - <script type="application/ld+json">JSON-LD Schema block</script>
+    
+    Strict Rule: prioritize External Data wall for real numbers and benchmarks.
     """
     try:
-        result = ai.chat.completions.create(
+        chat = ai.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "system", "content": "You are a professional hardware researcher. Truth is everything."}, {"role": "user", "content": prompt}]
+            messages=[{"role": "system", "content": "Professional Technical Lead. Output clean HTML only."},
+                      {"role": "user", "content": prompt}]
         )
-        content = result.choices[0].message.content
-        if validate_tech_data(content, wiki_text + official_text):
-            return content
-        return None
+        return chat.choices[0].message.content
     except: return None
 
-# --- 5. MAIN EXECUTION ---
+# --- 6. MAIN EXECUTION ---
 
 async def main():
     init_db()
-    if get_queue_health() < 3:
-        discover_new_keywords()
+    if get_queue_health() < 5: discover_new_keywords()
         
-    jobs = get_next_batch(2)
+    jobs = get_next_batch(3)
     if not jobs:
         print("📭 Queue is empty.")
         return
 
     for kw_id, phrase in jobs:
-        print(f"\n🚀 Starting Multi-Source Job: '{phrase}'")
-        notify_sheet(phrase, "Started")
-        
+        logger = JobLogger(phrase)
+        print(f"\n⚡ Processing: {phrase}")
+
         try:
-            page = smart_wiki_search(phrase)
-            if not page or article_exists(page.title):
-                print(f"⏭️ Skipping {phrase}: Already exists or no context.")
-                update_job_status(kw_id, "skipped")
-                continue
-
-            # 🖼️ STRICT IMAGE VALIDATION
-            image_url = get_wikipedia_image_pro(page.title)
-            if not image_url:
-                print(f"⏭️ Skipping {page.title}: No real photo found.")
-                update_job_status(kw_id, "skipped")
-                continue
-
-            # 🔎 Deep Research Phase
-            print(f"🔎 Scraping official sources for {page.title}...")
-            links = find_research_links(page)
-            official_raw = scrape_official_site(links["official"])
-            github_raw = scrape_official_site(links["github"])
+            # 1. Wiki Search
+            try:
+                page = wikipedia.page(phrase, auto_suggest=False)
+            except:
+                s = wikipedia.search(phrase)
+                if not s:
+                    logger.update("Wiki_Source", "❌ Failed", "No match"); update_job_status(kw_id, "failed"); logger.send_to_sheet(); continue
+                page = wikipedia.page(s[0], auto_suggest=False)
             
-            # ✍️ Content Generation
-            content = await generate_deep_dive(page.title, page.summary, official_raw, github_raw)
+            logger.update("Wiki_Source", "✅ Success", page.title)
+
+            if article_exists(page.title):
+                logger.update("Final_Status", "⏭️ Skipped", "Already in DB"); update_job_status(kw_id, "completed"); logger.send_to_sheet(); continue
+
+            # 2. Image Strict
+            img_url = get_wikipedia_image_strict(page.title)
+            if not img_url:
+                logger.update("Image_Status", "❌ Failed", "No photo found"); update_job_status(kw_id, "skipped"); logger.send_to_sheet(); continue
+            logger.update("Image_Status", "✅ Success")
+
+            # 3. Aggressive Scrape (The Fix)
+            print(f"🔎 Aggregating data for {page.title}...")
+            deep_links = find_deep_links(page)
+            master_context = ""
+            for url in deep_links:
+                raw_text = scrape_url_technical(url)
+                if raw_text: master_context += f"\nSOURCE ({url}):\n{raw_text}\n"
             
+            scraped_count = len(master_context)
+            logger.update("Official_Scrape", "✅ Done", f"Sources: {len(deep_links)} | Chars: {scraped_count}")
+
+            # 4. AI Synthesis
+            content = await generate_authority_article(page.title, page.summary, master_context)
+
             if content:
                 slug = create_unique_slug(page.title)
                 conn = sqlite3.connect(DB_PATH)
                 conn.execute(
-                    """INSERT INTO articles (title, slug, content, image_url, category, status, source_url, word_count) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (page.title, slug, content, image_url, "Hardware", "published", page.url, len(content.split()))
+                    "INSERT INTO articles (title, slug, content, image_url, category, source_url, word_count) VALUES (?,?,?,?,?,?,?)",
+                    (page.title, slug, content, img_url, "Hardware", page.url, len(content.split()))
                 )
-                conn.commit()
-                conn.close()
+                conn.commit(); conn.close()
                 update_job_status(kw_id, "completed")
-                notify_sheet(phrase, "Completed", "Hardware", len(content.split()))
+                
+                logger.update("AI_Generation", "✅ Success")
+                logger.update("Final_Status", "Published")
                 print(f"✅ Published: {page.title}")
             else:
-                print(f"❌ Validation failed for {phrase}.")
-                update_job_status(kw_id, "failed")
+                logger.update("Final_Status", "❌ Failed", "AI Error"); update_job_status(kw_id, "failed")
+
         except Exception as e:
-            print(f"❌ Fatal Error: {e}")
-            update_job_status(kw_id, "failed")
+            logger.update("Final_Status", "⚠️ Error", str(e)); update_job_status(kw_id, "failed")
+        
+        logger.send_to_sheet()
 
 if __name__ == "__main__":
     asyncio.run(main())
