@@ -2,6 +2,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import BaseLayout from '../layouts/BaseLayout.astro';
+import Header from '../components/Header.astro';
 
 const dbPath = path.resolve('content.db');
 const db = new Database(dbPath);
@@ -14,118 +15,75 @@ let articles = [];
 let totalArticles = 0;
 
 try {
-  // Query articles regardless of status
-  articles = db
-    .prepare(`
-      SELECT title, slug, image_url, category, status 
-      FROM articles 
-      ORDER BY id DESC 
-      LIMIT ? OFFSET ?
-    `)
-    .all(ITEMS_PER_PAGE, offset);
-
-  const countResult = db.prepare("SELECT COUNT(*) AS count FROM articles").get();
-  totalArticles = countResult ? countResult.count : 0;
+  articles = db.prepare(`SELECT * FROM articles ORDER BY id DESC LIMIT ? OFFSET ?`).all(ITEMS_PER_PAGE, offset);
+  totalArticles = db.prepare("SELECT COUNT(*) AS count FROM articles").get().count;
 } catch (e) {
-  console.error("❌ Database Fetch Error:", e);
+  console.error("❌ DB Error:", e);
 } finally {
   db.close();
 }
 
 const totalPages = Math.ceil(totalArticles / ITEMS_PER_PAGE) || 1;
-const hasPreviousPage = currentPage > 1;
-const hasNextPage = currentPage < totalPages;
 ---
 
-<BaseLayout 
-  title="Home" 
-  description="Your daily pulse on 2026 technical breakthroughs and AI advancements." 
-  type="website"
->
-  <style>
-    .container { max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem; font-family: 'Inter', sans-serif; }
-    
-    .hero { text-align: center; margin-bottom: 5rem; }
-    .hero span { color: #0070f3; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.8rem; }
-    .hero h1 { font-size: clamp(2.5rem, 8vw, 4rem); letter-spacing: -0.05em; font-weight: 900; margin: 1rem 0; color: #111; }
-    .hero p { font-size: 1.2rem; color: #666; max-width: 600px; margin: 0 auto; line-height: 1.6; }
+<BaseLayout title="Technical Pulse | 2026 Insights">
+  <Header />
+  <main class="container">
+    <div class="hero">
+      <span class="label">Verified Intelligence</span>
+      <h1>The 2026 Technical Pulse</h1>
+      <p>Deciphering hardware breakthroughs and AI innovations with multi-source verified reviews.</p>
+    </div>
 
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 2.5rem; }
-    
-    .card { 
-      background: #fff; border-radius: 24px; overflow: hidden; text-decoration: none; color: inherit; 
-      display: flex; flex-direction: column; border: 1px solid #eaeaea; transition: all 0.3s ease;
-      position: relative;
-    }
-    .card:hover { transform: translateY(-8px); border-color: #0070f3; box-shadow: 0 20px 40px rgba(0,0,0,0.05); }
-    
-    .img-box { position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; background: #f0f0f0; }
-    .card img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease; }
-    .card:hover img { transform: scale(1.05); }
-
-    .badge { position: absolute; top: 1rem; left: 1rem; background: rgba(255,255,255,0.9); backdrop-filter: blur(8px);
-               color: #0070f3; padding: 6px 14px; border-radius: 50px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; }
-
-    /* New: Draft/Noindex indicator for you to see which posts aren't indexed yet */
-    .status-dot { position: absolute; top: 1rem; right: 1rem; width: 10px; height: 10px; border-radius: 50%; }
-    .status-published { background: #10b981; box-shadow: 0 0 10px #10b981; }
-    .status-noindex { background: #f59e0b; }
-
-    .card-content { padding: 1.5rem; flex-grow: 1; display: flex; flex-direction: column; }
-    .card-content h2 { margin: 0 0 1rem; font-size: 1.4rem; line-height: 1.25; font-weight: 800; color: #111; }
-    .cta { margin-top: auto; color: #0070f3; font-weight: 700; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
-
-    .pagination { display: flex; justify-content: center; align-items: center; margin-top: 5rem; gap: 1.5rem; }
-    .p-link { padding: 10px 20px; border-radius: 12px; background: #f0f7ff; color: #0070f3; text-decoration: none; font-weight: 700; }
-    .p-link:hover { background: #0070f3; color: #fff; }
-    .disabled { opacity: 0.3; pointer-events: none; }
-
-    .empty-state { text-align: center; padding: 10rem 0; border: 2px dashed #eee; border-radius: 32px; }
-  </style>
-
-  <div class="container">
-    <header class="hero">
-      <span>Insights for the Future</span>
-      <h1>Technical Pulse</h1>
-      <p>Deciphering 2026's hardware breakthroughs and AI innovations with expert-led reviews.</p>
-    </header>
-
-    {articles.length > 0 ? (
-      <div class="grid">
-        {articles.map((post, index) => (
-          <a href={`/knownow/article/${post.slug}/`} class="card">
-            <div class="img-box">
-              {/* Added loading="eager" for first 3 items to improve LCP speed */}
-              <img 
-                src={post.image_url || '/placeholder.png'} 
-                alt={post.title} 
-                loading={index < 3 ? "eager" : "lazy"} 
-              />
-              <span class="badge">{post.category || 'Review'}</span>
-              
-              {/* Optional: Visual status tracker for the developer */}
-              <div class={`status-dot ${post.status === 'published' ? 'status-published' : 'status-noindex'}`} title={post.status}></div>
+    <div class="bento-grid">
+      {articles.map((post, index) => (
+        <a href={`/knownow/article/${post.slug}/`} class="bento-card">
+          <div class="media-box">
+            <img src={post.image_url || '/placeholder.png'} alt={post.title} loading={index < 3 ? "eager" : "lazy"} />
+            <div class="overlay-badge">{post.category || 'Tech'}</div>
+          </div>
+          <div class="text-box">
+            <h2>{post.title}</h2>
+            <div class="footer-meta">
+              <span class="action">Analysis →</span>
+              <span>{new Date(post.created_at).toLocaleDateString()}</span>
             </div>
-            <div class="card-content">
-              <h2>{post.title}</h2>
-              <div class="cta">Read Technical Analysis <span>→</span></div>
-            </div>
-          </a>
-        ))}
-      </div>
-    ) : (
-      <div class="empty-state">
-        <h2 style="color: #bbb; font-size: 2rem;">Transmission Silent...</h2>
-        <p>The technical queue is currently being processed by the AI architect.</p>
-      </div>
-    )}
+          </div>
+        </a>
+      ))}
+    </div>
 
     {totalArticles > ITEMS_PER_PAGE && (
       <nav class="pagination">
-        <a href={`/knownow/?page=${currentPage - 1}`} class={`p-link ${!hasPreviousPage && 'disabled'}`}>Prev</a>
-        <span style="font-weight: 600; color: #888;">{currentPage} / {totalPages}</span>
-        <a href={`/knownow/?page=${currentPage + 1}`} class={`p-link ${!hasNextPage && 'disabled'}`}>Next</a>
+        <a href={`/knownow/?page=${currentPage - 1}`} class={currentPage === 1 ? 'disabled' : ''}>Prev</a>
+        <span>{currentPage} / {totalPages}</span>
+        <a href={`/knownow/?page=${currentPage + 1}`} class={currentPage === totalPages ? 'disabled' : ''}>Next</a>
       </nav>
     )}
-  </div>
+  </main>
 </BaseLayout>
+
+<style>
+  .container { max-width: 1250px; margin: 0 auto; padding: 5rem 1.5rem; }
+  .hero { text-align: center; margin-bottom: 7rem; }
+  .label { color: #0070f3; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2em; font-size: 0.75rem; }
+  h1 { font-size: clamp(3rem, 8vw, 5.5rem); font-weight: 900; letter-spacing: -0.06em; margin: 1rem 0; }
+  
+  .bento-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 3rem; }
+  .bento-card { background: #fff; border-radius: 32px; border: 1px solid #f0f0f0; text-decoration: none; color: inherit; transition: 0.4s cubic-bezier(0.2, 1, 0.3, 1); }
+  .bento-card:hover { transform: translateY(-12px); border-color: #0070f3; box-shadow: 0 40px 80px rgba(0,0,0,0.08); }
+  
+  .media-box { position: relative; aspect-ratio: 16/10; overflow: hidden; border-radius: 32px 32px 0 0; }
+  .media-box img { width: 100%; height: 100%; object-fit: cover; transition: 0.6s; }
+  .bento-card:hover img { scale: 1.05; }
+  .overlay-badge { position: absolute; bottom: 1rem; left: 1rem; background: white; padding: 6px 14px; border-radius: 50px; font-weight: 800; font-size: 0.65rem; color: #111; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+
+  .text-box { padding: 2.5rem; }
+  h2 { font-size: 1.6rem; font-weight: 800; line-height: 1.2; margin-bottom: 2rem; }
+  .footer-meta { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f5f5f5; padding-top: 1.5rem; font-size: 0.85rem; font-weight: 600; }
+  .action { color: #0070f3; }
+  
+  .pagination { display: flex; justify-content: center; align-items: center; margin-top: 6rem; gap: 2rem; }
+  .pagination a { padding: 12px 25px; background: #0070f3; color: white; border-radius: 12px; text-decoration: none; font-weight: 700; }
+  .disabled { opacity: 0.3; pointer-events: none; }
+</style>

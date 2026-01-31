@@ -13,7 +13,7 @@ from datetime import datetime
 # --- CONFIGURATION ---
 DB_PATH = "content.db"
 # Use the key provided for your current session
-GROQ_API_KEY = "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"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GH_TOKEN = os.getenv("GH_TOKEN")
 REPO_OWNER = "yashawanthbg2001"
 REPO_NAME = "knownow"
