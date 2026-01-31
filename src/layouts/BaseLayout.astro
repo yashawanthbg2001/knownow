@@ -1,6 +1,6 @@
 ---
 // src/layouts/BaseLayout.astro
-import Header from '../components/Header.astro';
+
 
 const { 
   title, 
@@ -41,7 +41,7 @@ const defaultImage = `${domain}/default-og.png`;
     <slot name="head" />
   </head>
   <body>
-    <Header />
+   
     
     <main>
       <slot /> </main>
