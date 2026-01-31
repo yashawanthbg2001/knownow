@@ -13,9 +13,18 @@ export async function getStaticPaths() {
 }
 
 const { post } = Astro.props;
+
+if (!post) return Astro.redirect('/404');
+
+// 🟢 STEP 1: Process all data in the Page component, NOT the Layout
 const postContent = post.content || "";
 const postTitle = post.title || "Technical Review";
 const postImage = post.image_url || '/placeholder.png';
+const postSlug = Astro.params.slug;
+
+const seoDescription = postContent
+  ? postContent.replace(/<[^>]*>/g, '').substring(0, 155).trim() + "..."
+  : "Expert tech analysis on KnowNow.";
 
 const extract = (regex) => {
   const match = postContent.match(regex);
@@ -29,10 +38,20 @@ const schemaRegex = /<script type="application\/ld\+json">([\s\S]+?)<\/script>/;
 const verdictHtml = extract(verdictRegex);
 const specsHtml = extract(specsRegex);
 const schemaHtml = extract(schemaRegex);
+
+// Determine indexing status for robots meta
+const isNoIndex = post.status === "noindex" || post.tier === 3;
 ---
 
-<BaseLayout post={post} title={postTitle} image={postImage}>
+<BaseLayout 
+  title={postTitle} 
+  description={seoDescription} 
+  image={postImage} 
+  slug={postSlug}
+  noindex={isNoIndex}
+>
   {schemaHtml && <Fragment set:html={schemaHtml} slot="head" />}
+  
   <Header />
 
   <article class="article-container">
@@ -56,13 +75,17 @@ const schemaHtml = extract(schemaRegex);
     </header>
 
     <div class="hero-image">
-      <img src={postImage} alt={postTitle} />
+      <img src={postImage} alt={postTitle} loading="eager" />
     </div>
 
     <div class="entry-content">
       {verdictHtml && <div class="v-wrapper" set:html={verdictHtml} />}
       
-      <div class="body-copy" set:html={postContent.replace(verdictRegex, '').replace(specsRegex, '').replace(schemaRegex, '')} />
+      <div class="body-copy" set:html={postContent
+          .replace(verdictRegex, '')
+          .replace(specsRegex, '')
+          .replace(schemaRegex, '')
+        } />
 
       {specsHtml && (
         <section class="specs-box">
@@ -90,6 +113,7 @@ const schemaHtml = extract(schemaRegex);
 </BaseLayout>
 
 <style is:global>
+  /* Base Layout & Typography */
   .article-container { max-width: 820px; margin: 0 auto; padding: 4rem 1.5rem; }
   .breadcrumb a { color: #0070f3; text-decoration: none; font-weight: 700; font-size: 0.85rem; }
   
